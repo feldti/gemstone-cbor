@@ -1,0 +1,1 @@
+Example Zinc server speaking application/cbor (see docs/http.md). Requires Zinc.

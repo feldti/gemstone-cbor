@@ -34,6 +34,7 @@ Für einen lokalen Checkout lautet das Repository `'filetree:///pfad/zu/gemstone
 |---|---|
 | `Cbor-Core` | die Bibliothek |
 | `Cbor-Tests` | SUnit-Tests und Beispielklassen (benötigt `Cbor-Core`) |
+| `Cbor-Zinc-Examples` | HTTP-Beispiele und -Tests mit Zinc (Gruppe `Zinc`, nicht in `default`; benötigt Zinc im Image) |
 
 Gruppen der `BaselineOfCbor`:
 - `default`: alles
@@ -353,6 +354,17 @@ Auf GitHub übernimmt das die Action `.github/workflows/cddl.yml`. Sie läuft be
 1. Die eingecheckten Vektoren müssen dem entsprechen, was `generate_vectors.py` erzeugt. Sonst fehlt ein `python3 spec/generate_vectors.py` vor dem Commit.
 2. `validate_vectors.py` muss für alle Vektoren mit dem Schema übereinstimmen.
 
+### CBOR über HTTP
+
+Wie Requests und Responses aussehen müssen, beschreibt [`docs/http.md`](docs/http.md):
+- Medientypen `application/cbor`, `application/cbor-seq` und `+cbor`
+- die Header `Accept` und `Content-Type`
+- die Statuscodes 406, 415 und 400 mit Concise Problem Details
+- Beispiele mit curl
+- GemStone-Beispiele mit Zinc als Client und Server
+
+Die Zinc-Beispiele liegen als laufende Tests im Paket `Cbor-Zinc-Examples` (Metacello-Gruppe `Zinc`, Topaz-Fileout `src/CborZincExamples.gs`; benötigt Zinc).
+
 ### Streaming und Werte unbestimmter Länge
 
 Encoder und Decoder arbeiten auf beliebigen binären Streams:
@@ -443,6 +455,7 @@ Alle Fehler beim Encodieren und Decodieren sind Instanzen von `CborError` (Unter
 CborTest suite run.               "37 Tests, alle grün"
 CborTypeRegistryTest suite run.   "17 Tests, alle grün"
 CborVectorTest suite run.         " 6 Tests, alle grün: prüft alle 18 gemeinsamen Testvektoren"
+CborZincExampleTest suite run.    " 7 Tests, alle grün, benötigt Zinc (startet Server auf localhost:18765)"
 ```
 
 ## Hinweise

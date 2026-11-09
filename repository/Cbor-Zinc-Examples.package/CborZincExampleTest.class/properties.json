@@ -1,0 +1,13 @@
+{
+	"category": "Cbor-Zinc-Examples",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"example"
+	],
+	"name": "CborZincExampleTest",
+	"pools": [],
+	"super": "TestCase",
+	"type": "normal"
+}

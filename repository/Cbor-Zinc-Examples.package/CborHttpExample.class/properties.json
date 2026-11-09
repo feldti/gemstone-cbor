@@ -1,0 +1,14 @@
+{
+	"category": "Cbor-Zinc-Examples",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"registry",
+		"server"
+	],
+	"name": "CborHttpExample",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

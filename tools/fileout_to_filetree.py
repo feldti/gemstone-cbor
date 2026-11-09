@@ -9,6 +9,7 @@ repository/ from them so both formats always contain the same code:
     BaselineOfCbor.package/     Metacello baseline
     Cbor-Core.package/          the library
     Cbor-Tests.package/         SUnit tests and test fixtures
+    Cbor-Zinc-Examples.package/ HTTP examples/tests (group 'Zinc', needs Zinc)
 
 Load into a GemStone image that has GLASS/GsDevKit Metacello + FileTree:
 
@@ -28,16 +29,18 @@ import shutil
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-FILEOUTS = [ROOT / "src" / "CborLibrary.gs", ROOT / "src" / "CborVectorTest-vectors.gs"]
+FILEOUTS = [ROOT / "src" / "CborLibrary.gs", ROOT / "src" / "CborVectorTest-vectors.gs",
+            ROOT / "src" / "CborZincExamples.gs"]
 OUT = ROOT / "repository"
 
-CORE, TESTS = "Cbor-Core", "Cbor-Tests"
+CORE, TESTS, ZINC = "Cbor-Core", "Cbor-Tests", "Cbor-Zinc-Examples"
 PACKAGE_OF = {
     "Cbor": CORE, "CborError": CORE, "CborTag": CORE, "CborSimpleValue": CORE,
     "CborEncoder": CORE, "CborTypedEncoder": CORE, "CborDecoder": CORE,
     "CborTypeMapping": CORE, "CborTypeRegistry": CORE,
     "CborTest": TESTS, "CborTypeRegistryTest": TESTS, "CborVectorTest": TESTS,
     "CborTestPoint": TESTS, "CborTestAddress": TESTS, "CborTestCustomer": TESTS,
+    "CborHttpExample": ZINC, "CborZincExampleTest": ZINC,
 }
 
 COMMENTS = {
@@ -57,6 +60,8 @@ COMMENTS = {
     "CborTestPoint": "Test fixture: point, tag 40001 in spec/types.cddl.",
     "CborTestAddress": "Test fixture: address, tag 40003 in spec/types.cddl.",
     "CborTestCustomer": "Test fixture: customer, tag 40002 in spec/types.cddl.",
+    "CborHttpExample": "Example Zinc server speaking application/cbor (see docs/http.md). Requires Zinc.",
+    "CborZincExampleTest": "Runs the HTTP examples from docs/http.md against a local Zinc server. Requires Zinc.",
 }
 
 BASELINE_SOURCE = """baseline: spec
@@ -64,11 +69,13 @@ BASELINE_SOURCE = """baseline: spec
 	spec for: #'common' do: [
 		spec
 			package: 'Cbor-Core';
-			package: 'Cbor-Tests' with: [spec requires: #('Cbor-Core')].
+			package: 'Cbor-Tests' with: [spec requires: #('Cbor-Core')];
+			package: 'Cbor-Zinc-Examples' with: [spec requires: #('Cbor-Core' 'Cbor-Tests')].
 		spec
 			group: 'default' with: #('Core' 'Tests');
 			group: 'Core' with: #('Cbor-Core');
-			group: 'Tests' with: #('Cbor-Tests')]"""
+			group: 'Tests' with: #('Cbor-Tests');
+			group: 'Zinc' with: #('Cbor-Zinc-Examples')]"""
 
 CLASS_DEF = re.compile(
     r"^run\n(\w+) subclass: '(\w+)'\n"
@@ -158,7 +165,7 @@ def main():
         shutil.rmtree(OUT)
     write(OUT / ".filetree", json_text({"packageExtension": ".package", "propertyFileExtension": ".json"}))
 
-    packages = {CORE: write_package_skeleton(CORE), TESTS: write_package_skeleton(TESTS)}
+    packages = {name: write_package_skeleton(name) for name in (CORE, TESTS, ZINC)}
     class_dirs = {}
     for superclass, name, iv, cv, civ, pools, _options in CLASS_DEF.findall(text):
         pkg = PACKAGE_OF[name]  # KeyError = new class without a package assignment
@@ -175,7 +182,7 @@ def main():
                      "BaselineOfCbor", comment="Metacello baseline for the CBOR library.")
     add_method(bdir, False, "baseline", BASELINE_SOURCE)
 
-    for name in (CORE, TESTS, "BaselineOfCbor"):
+    for name in (CORE, TESTS, ZINC, "BaselineOfCbor"):
         write_monticello_meta(OUT / f"{name}.package", name)
 
     missing = set(PACKAGE_OF) - set(class_dirs)

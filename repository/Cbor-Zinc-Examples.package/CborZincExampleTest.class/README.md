@@ -1,0 +1,1 @@
+Runs the HTTP examples from docs/http.md against a local Zinc server. Requires Zinc.
