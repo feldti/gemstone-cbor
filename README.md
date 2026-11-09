@@ -246,6 +246,7 @@ Wenn auch andere Sprachen die Daten lesen oder schreiben, gilt als Vertrag nicht
 | `spec/types.cddl` | Schema in CDDL (RFC 8610): Tag-Nummern, Felder, Pflicht/optional, Regeln für Erweiterungen |
 | `spec/test-vectors.json` | gemeinsame Testvektoren: Hex-Bytes, Diagnostic Notation, CDDL-Regel, gültig/ungültig, Roundtrip ja/nein |
 | `spec/generate_vectors.py` | erzeugt die Vektoren mit einem eigenen, abhängigkeitsfreien CBOR-Encoder |
+| `spec/validate_vectors.py` | prüft die Vektoren mit dem CDDL-Referenzwerkzeug gegen das Schema |
 
 Die Beispieltypen dort sind `point` (Tag 40001), `customer` (40002) und `address` (40003). In GemStone bilden die Testklassen `CborTestPoint`, `CborTestCustomer` und `CborTestAddress` sie ab.
 
@@ -269,7 +270,14 @@ Das Skript schreibt `spec/test-vectors.json` und `src/CborVectorTest-vectors.gs`
 
 In GemStone erledigt das `CborVectorTest`. Für Python, JavaScript & Co. liest die jeweilige Testsuite `spec/test-vectors.json` ein.
 
-**CDDL-Validierung:** Mit dem Referenzwerkzeug (Ruby-Gem `cddl`) lässt sich das Schema gegen die Vektoren prüfen, z.B. `cddl spec/types.cddl validate <datei.cbor>`. Erwartet wird: gültige Vektoren bestehen, ungültige fallen durch. Diese Prüfung ist im Repository noch nicht automatisiert.
+**CDDL-Validierung:** Das Skript `spec/validate_vectors.py` prüft alle Vektoren mit dem Referenzwerkzeug (Ruby-Gem `cddl`) gegen das Schema. Gültige Vektoren müssen bestehen, ungültige durchfallen.
+
+```
+gem install --user-install cddl      # einmalig
+python3 spec/validate_vectors.py     # => 18/18 vectors agree with spec/types.cddl
+```
+
+Das Skript sucht `cddl` in `$CDDL`, im `PATH` und im RubyGems-Benutzerverzeichnis. Es endet mit Status 1, wenn ein Vektor nicht zum Schema passt, und eignet sich damit auch für CI.
 
 ### Streaming und Werte unbestimmter Länge
 
