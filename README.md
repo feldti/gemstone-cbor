@@ -374,6 +374,8 @@ Wie Requests und Responses aussehen müssen, beschreibt [`docs/http.md`](docs/ht
 
 Die Zinc-Beispiele liegen als laufende Tests im Paket `Cbor-Zinc-Examples` (Metacello-Gruppe `Zinc`, Topaz-Fileout `src/CborZincExamples.gs`; benötigt Zinc).
 
+Wie eine Sencha-Ext-JS-Anwendung CBOR über Reader und Proxy statt JSON verwendet, beschreibt [`docs/extjs.md`](docs/extjs.md). Das ist ein ungetesteter Entwurf für Ext JS 6/7.
+
 ### Streaming und Werte unbestimmter Länge
 
 Encoder und Decoder arbeiten auf beliebigen binären Streams:
