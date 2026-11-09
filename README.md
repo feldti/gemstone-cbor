@@ -26,6 +26,27 @@ topaz 1> commit
 
 `CborVectorTest-vectors.gs` enthält nur die generierten Testvektoren für `CborVectorTest` (siehe unten).
 
+Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Seaside oder Rowan. Getestet ist das mit GemStone 3.7.5, sowohl in einem Entwicklungs-Image als auch in einem frischen Stone aus dem leeren `extent0.dbf`.
+
+### Test in einem frischen Stone
+
+`tools/fresh-stone-test.sh` legt einen neuen Stone aus dem leeren `extent0.dbf` des Produkts an. Das Skript lädt beide Fileouts, lässt alle Testsuiten laufen und stoppt und löscht den Stone danach wieder. Der Stone läuft isoliert: eigener Name `cborfresh` und eigenes `GEMSTONE_GLOBAL_DIR`, andere Stones bleiben also unberührt.
+
+```
+tools/fresh-stone-test.sh <GemStone-Produktverzeichnis> [Keyfile] [Arbeitsverzeichnis]
+
+# z.B.
+tools/fresh-stone-test.sh ~/GemStone64Bit3.7.5-x86_64.Linux
+#   CborTest: 37 run, 37 passed, 0 failures, 0 errors
+#   CborTypeRegistryTest: 17 run, 17 passed, 0 failures, 0 errors
+#   CborVectorTest: 6 run, 6 passed, 0 failures, 0 errors
+#   TOTAL: 60 run, 0 not passed
+```
+
+Ohne Keyfile-Angabe wird `sys/community.starter.key` des Produkts verwendet. Mit `KEEP=1` bleibt das Arbeitsverzeichnis mit den Logs erhalten. Der Exit-Status ist 0, wenn alles grün ist.
+
+Der Test im frischen Stone deckt Abhängigkeiten auf, die ein voll ausgebautes Entwicklungs-Image verdeckt. So fehlen im reinen 3.7.5-Kernel `isInteger`, `isNaN`, `Float nan` und `Float infinity`, und `Character>>digitValue` liefert für Hex-Buchstaben `nil`.
+
 Die Datei kann mehrfach geladen werden. Vor dem Neuladen werden die vorhandenen Methoden der Klassen entfernt.
 
 ## Schnellstart

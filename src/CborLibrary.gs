@@ -180,7 +180,7 @@ tag: anInteger value: anObject
 category: 'private'
 method: CborTag
 setTag: anInteger value: anObject
-	(anInteger isInteger and: [anInteger >= 0 and: [anInteger < 18446744073709551616]])
+	((anInteger isKindOf: Integer) and: [anInteger >= 0 and: [anInteger < 18446744073709551616]])
 		ifFalse: [^CborError signal: 'CBOR tag number must be an unsigned 64-bit integer'].
 	tag := anInteger.
 	value := anObject
@@ -237,7 +237,7 @@ value: anInteger
 	 reserved, so only 0..19 and 32..255 may be created here.
 	 Use #undefined for simple value 23."
 
-	(anInteger isInteger and: [(anInteger between: 0 and: 19) or: [anInteger between: 32 and: 255]])
+	((anInteger isKindOf: Integer) and: [(anInteger between: 0 and: 19) or: [anInteger between: 32 and: 255]])
 		ifFalse: [^CborError signal: 'invalid CBOR simple value: ', anInteger printString].
 	^self basicNew setValue: anInteger
 %
@@ -432,7 +432,7 @@ encodeObject: anObject
 	anObject == nil ifTrue: [^self writeNull].
 	anObject == true ifTrue: [^self writeTrue].
 	anObject == false ifTrue: [^self writeFalse].
-	anObject isInteger ifTrue: [^self writeInteger: anObject].
+	(anObject isKindOf: Integer) ifTrue: [^self writeInteger: anObject].
 	(anObject isKindOf: BinaryFloat) ifTrue: [^self writeFloat: anObject].
 	(anObject isKindOf: ScaledDecimal) ifTrue: [^self writeScaledDecimal: anObject].
 	(anObject isKindOf: AbstractFraction) ifTrue: [^self writeFraction: anObject].
@@ -1163,19 +1163,35 @@ decodeSimpleOrFloat: info
 category: 'private - decoding'
 method: CborDecoder
 floatFromHalfBits: bits
-	"Convert IEEE 754 half precision bits to a Float."
+	"Convert IEEE 754 half precision bits to a Float. Infinities and NaNs are built
+	 from the equivalent double precision bit pattern (the GemStone kernel has no
+	 Float infinity / Float nan)."
 
 	| negative exp mant value |
 	negative := (bits bitShift: -15) = 1.
 	exp := (bits bitShift: -10) bitAnd: 31.
 	mant := bits bitAnd: 1023.
 	exp = 31 ifTrue: [
-		mant = 0 ifFalse: [^Float nan].
-		^negative ifTrue: [Float negativeInfinity] ifFalse: [Float infinity]].
+		^self floatFromDoubleBits: ((bits bitShift: -15) bitShift: 63)
+			+ (16r7FF bitShift: 52) + (mant bitShift: 42)].
 	value := exp = 0
 		ifTrue: [(mant / 16777216) asFloat]
 		ifFalse: [((mant + 1024) * (2 raisedTo: exp - 25)) asFloat].
 	^negative ifTrue: [value negated] ifFalse: [value]
+%
+
+category: 'private - decoding'
+method: CborDecoder
+floatFromDoubleBits: anInteger
+	"Answer the Float with the given IEEE 754 double precision bit pattern."
+
+	| bytes v |
+	bytes := ByteArray new: 8.
+	v := anInteger.
+	8 to: 1 by: -1 do: [:i |
+		bytes at: i put: (v bitAnd: 255).
+		v := v bitShift: -8].
+	^bytes doubleAt: 1
 %
 
 category: 'private - decoding'
@@ -1208,7 +1224,7 @@ decodeStandardTag: tagNumber value: value
 	tagNumber = 4 ifTrue: [^self decimalFractionFrom: value].
 	tagNumber = 30 ifTrue: [
 		((value isKindOf: Array) and: [value size = 2
-			and: [value first isInteger and: [value last isInteger and: [value last > 0]]]])
+			and: [(value first isKindOf: Integer) and: [(value last isKindOf: Integer) and: [value last > 0]]]])
 			ifFalse: [^self signalError: 'tag 30 requires [integer, positive integer]'].
 		^value first / value last].
 	tagNumber = 258 ifTrue: [
@@ -1225,7 +1241,7 @@ decimalFractionFrom: value
 
 	| exponent mantissa |
 	((value isKindOf: Array) and: [value size = 2
-		and: [value first isInteger and: [value last isInteger]]])
+		and: [(value first isKindOf: Integer) and: [value last isKindOf: Integer]]])
 		ifFalse: [^self signalError: 'tag 4 requires [integer, integer]'].
 	exponent := value first.
 	mantissa := value last.
@@ -1388,8 +1404,20 @@ bytesFromHex: aString
 	digits size odd ifTrue: [^CborError signal: 'odd number of hex digits'].
 	bytes := ByteArray new: digits size // 2.
 	1 to: bytes size do: [:i |
-		bytes at: i put: ((digits at: i * 2 - 1) digitValue * 16) + (digits at: i * 2) digitValue].
+		bytes at: i put: ((self hexDigitValue: (digits at: i * 2 - 1)) * 16) + (self hexDigitValue: (digits at: i * 2))].
 	^bytes
+%
+
+category: 'converting'
+classmethod: Cbor
+hexDigitValue: aCharacter
+	"Value 0..15 of a hex digit (either case). The kernel's Character>>digitValue
+	 answers nil for letters, so this does not rely on it."
+
+	| i |
+	i := '0123456789abcdefABCDEF' indexOf: aCharacter.
+	i = 0 ifTrue: [^CborError signal: 'invalid hex digit: ', aCharacter printString].
+	^i <= 16 ifTrue: [i - 1] ifFalse: [i - 7]
 %
 
 category: 'converting'
@@ -1440,6 +1468,14 @@ category: 'helpers'
 method: CborTest
 assertDecodeError: hexString
 	self should: [self decodeHex: hexString] raise: CborError
+%
+
+category: 'helpers'
+method: CborTest
+double: hexString
+	"Answer the Float with the given 64-bit IEEE 754 pattern (big-endian hex)."
+
+	^(Cbor bytesFromHex: hexString) doubleAt: 1
 %
 
 category: 'helpers'
@@ -1534,14 +1570,18 @@ testSingleAndDoublePrecisionFloats
 category: 'tests - floats'
 method: CborTest
 testSpecialFloats
-	self assertRoundTrip: Float infinity hex: 'f97c00'.
-	self assertRoundTrip: Float negativeInfinity hex: 'f9fc00'.
-	self assertEncoding: Float nan is: 'f97e00'.
-	self assert: (self decodeHex: 'f97e00') isNaN.
-	self assert: (self decodeHex: 'fa7fc00000') isNaN.
-	self assert: (self decodeHex: 'fb7ff8000000000000') isNaN.
-	self assert: (self decodeHex: 'fa7f800000') equals: Float infinity.
-	self assert: (self decodeHex: 'fbfff0000000000000') equals: Float negativeInfinity
+	| infinity negativeInfinity nan |
+	infinity := self double: '7ff0000000000000'.
+	negativeInfinity := self double: 'fff0000000000000'.
+	nan := self double: '7ff8000000000000'.
+	self assertRoundTrip: infinity hex: 'f97c00'.
+	self assertRoundTrip: negativeInfinity hex: 'f9fc00'.
+	self assertEncoding: nan is: 'f97e00'.
+	self assert: (self decodeHex: 'f97e00') _isNaN.
+	self assert: (self decodeHex: 'fa7fc00000') _isNaN.
+	self assert: (self decodeHex: 'fb7ff8000000000000') _isNaN.
+	self assert: (self decodeHex: 'fa7f800000') equals: infinity.
+	self assert: (self decodeHex: 'fbfff0000000000000') equals: negativeInfinity
 %
 
 category: 'tests - floats'
@@ -1891,8 +1931,8 @@ category: 'tests - errors'
 method: CborTest
 testMaxDepth
 	| bytes decoder |
-	bytes := ByteArray new: 2000 withAll: 16r81.
-	bytes := bytes , #[0].
+	bytes := ByteArray new: 2001.
+	1 to: 2000 do: [:i | bytes at: i put: 16r81].
 	self should: [Cbor decode: bytes] raise: CborError.
 	decoder := CborDecoder onBytes: (self hex: '818100').
 	decoder maxDepth: 1.
@@ -2086,7 +2126,7 @@ register: aClass tag: tagNumber encode: encodeBlock decode: decodeBlock
 	 A nil block falls back to #cborPayload / #fromCborPayload:."
 
 	| existing mapping |
-	(tagNumber isInteger and: [tagNumber >= 0 and: [tagNumber < 18446744073709551616]])
+	((tagNumber isKindOf: Integer) and: [tagNumber >= 0 and: [tagNumber < 18446744073709551616]])
 		ifFalse: [^CborError signal: 'CBOR tag number must be an unsigned 64-bit integer'].
 	tagNumber = 27
 		ifTrue: [^CborError signal: 'tag 27 is reserved for named types, use #register:typeName:'].
@@ -2629,7 +2669,7 @@ fromCborPayload: aMap
 	aCreatedAt := aMap at: 4 ifAbsent: [nil].
 	((aName isKindOf: CharacterCollection) and: [aName encodeAsUTF8 size between: 1 and: 200])
 		ifFalse: [^CborError signal: 'customer name must be a text string of 1..200 bytes'].
-	(anId isInteger and: [anId >= 0])
+	((anId isKindOf: Integer) and: [anId >= 0])
 		ifFalse: [^CborError signal: 'customer id must be an unsigned integer'].
 	(someAddresses isNil or: [(someAddresses isKindOf: Array) and: [someAddresses notEmpty
 		and: [someAddresses allSatisfy: [:each | each isKindOf: CborTestAddress]]]])
