@@ -6,4 +6,6 @@ encodeObject: anObject
 	| mapping |
 	mapping := registry isNil ifFalse: [registry mappingForClass: anObject class].
 	mapping isNil ifTrue: [^super encodeObject: anObject].
-	mapping encode: anObject on: self
+	self enter.
+	mapping encode: anObject on: self.
+	self leave

@@ -449,13 +449,12 @@ encode: anObject
 	   objects understanding #cborEncodeOn: -> delegate (CborTag, CborSimpleValue, ...)
 	   AbstractDictionary        -> major type 5 map
 	   SequenceableCollection    -> major type 4 array
-	   Set, IdentitySet          -> tag 258 + array"
+	   Set, IdentitySet          -> tag 258 + array
 
-	depth >= maxDepth
-		ifTrue: [^CborError signal: 'CBOR maximum nesting depth exceeded (cyclic structure?)'].
-	depth := depth + 1.
-	self encodeObject: anObject.
-	depth := depth - 1
+	 Nesting depth is tracked only where recursion can happen (arrays, maps, sets and
+	 objects that encode themselves), so scalar values carry no bookkeeping cost."
+
+	self encodeObject: anObject
 %
 
 category: 'private'
@@ -488,7 +487,10 @@ encodeObject: anObject
 	(anObject isKindOf: CharacterCollection) ifTrue: [^self writeString: anObject].
 	(anObject isKindOf: Character) ifTrue: [^self writeString: anObject asString].
 	(anObject isKindOf: DateAndTimeANSI) ifTrue: [^self writeDateAndTime: anObject].
-	(anObject respondsTo: #cborEncodeOn:) ifTrue: [^anObject cborEncodeOn: self].
+	(anObject respondsTo: #cborEncodeOn:) ifTrue: [
+		self enter.
+		anObject cborEncodeOn: self.
+		^self leave].
 	(anObject isKindOf: AbstractDictionary) ifTrue: [^self writeMap: anObject].
 	(anObject isKindOf: SequenceableCollection) ifTrue: [^self writeArray: anObject].
 	((anObject isKindOf: Set) or: [anObject isKindOf: IdentitySet])
@@ -796,8 +798,33 @@ writeDateAndTime: aDateAndTime
 category: 'writing - objects'
 method: CborEncoder
 writeArray: aSequenceableCollection
-	self writeArrayHeader: aSequenceableCollection size.
-	aSequenceableCollection do: [:each | self encode: each]
+	"SmallInteger elements are written directly, without the generic dispatch
+	 (encode: -> encodeObject: -> writeInteger: -> writeHead:value:); unsigned
+	 values below 65536 are written inline. This is the hot path for numeric arrays."
+
+	| size inline each |
+	self enter.
+	size := aSequenceableCollection size.
+	self writeArrayHeader: size.
+	inline := self canInlineSmallIntegers.
+	1 to: size do: [:i |
+		each := aSequenceableCollection at: i.
+		(inline and: [each class == SmallInteger])
+			ifTrue: [
+				(each >= 0 and: [each < 65536])
+					ifTrue: [
+						each < 24
+							ifTrue: [stream nextPut: each]
+							ifFalse: [
+								each < 256
+									ifTrue: [stream nextPut: 24; nextPut: each]
+									ifFalse: [stream nextPut: 25; nextPut: (each bitShift: -8); nextPut: (each bitAnd: 255)]]]
+					ifFalse: [
+						each >= 0
+							ifTrue: [self writeHead: 0 value: each]
+							ifFalse: [self writeHead: 1 value: -1 - each]]]
+			ifFalse: [self encodeObject: each]].
+	self leave
 %
 
 category: 'writing - objects'
@@ -809,29 +836,33 @@ writeSet: aCollection
 	self writeTag: 258.
 	canonical
 		ifFalse: [^self writeArray: aCollection asArray].
+	self enter.
 	elements := aCollection asArray collect: [:each | self encodedBytesOf: each].
 	elements := elements asSortedCollection: [:a :b | self bytes: a lessOrEqual: b].
 	self writeArrayHeader: elements size.
-	elements do: [:each | stream nextPutAll: each]
+	elements do: [:each | stream nextPutAll: each].
+	self leave
 %
 
 category: 'writing - objects'
 method: CborEncoder
 writeMap: aDictionary
 	| pairs |
+	self enter.
 	self writeMapHeader: aDictionary size.
 	canonical ifFalse: [
 		aDictionary keysAndValuesDo: [:key :value |
-			self encode: key.
-			self encode: value].
-		^self].
+			self encodeObject: key.
+			self encodeObject: value].
+		^self leave].
 	pairs := OrderedCollection new.
 	aDictionary keysAndValuesDo: [:key :value |
 		pairs add: (Array with: (self encodedBytesOf: key) with: value)].
 	pairs := pairs asSortedCollection: [:a :b | self bytes: a first lessOrEqual: b first].
 	pairs do: [:pair |
 		stream nextPutAll: pair first.
-		self encode: pair last]
+		self encodeObject: pair last].
+	self leave
 %
 
 category: 'private'
@@ -866,6 +897,30 @@ bytes: a lessOrEqual: b
 	1 to: (a size min: b size) do: [:i |
 		(a at: i) = (b at: i) ifFalse: [^(a at: i) < (b at: i)]].
 	^a size <= b size
+%
+
+category: 'private'
+method: CborEncoder
+enter
+	"Called before writing the contents of a container or self-encoding object."
+
+	depth >= maxDepth
+		ifTrue: [^CborError signal: 'CBOR maximum nesting depth exceeded (cyclic structure?)'].
+	depth := depth + 1
+%
+
+category: 'private'
+method: CborEncoder
+leave
+	depth := depth - 1
+%
+
+category: 'private'
+method: CborEncoder
+canInlineSmallIntegers
+	"Whether SmallIntegers may bypass encodeObject: (see writeArray:)."
+
+	^true
 %
 
 ! ------------------- CborDecoder
@@ -2035,13 +2090,23 @@ encodeObject: anObject
 	| mapping |
 	mapping := registry isNil ifFalse: [registry mappingForClass: anObject class].
 	mapping isNil ifTrue: [^super encodeObject: anObject].
-	mapping encode: anObject on: self
+	self enter.
+	mapping encode: anObject on: self.
+	self leave
 %
 
 category: 'private'
 method: CborTypedEncoder
 newNestedEncoder
 	^super newNestedEncoder registry: registry; yourself
+%
+
+category: 'private'
+method: CborTypedEncoder
+canInlineSmallIntegers
+	"The inline path must not bypass a registry mapping for SmallInteger."
+
+	^registry isNil or: [(registry mappingForClass: SmallInteger) isNil]
 %
 
 ! ------------------- CborTypeMapping
@@ -2651,6 +2716,20 @@ category: 'tests'
 method: CborTypeRegistryTest
 testDefaultRegistryIsShared
 	self assert: CborTypeRegistry default == CborTypeRegistry default
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testRegistryOverridesSmallIntegersInArrays
+	"The SmallInteger fast path in writeArray: must not bypass a registry mapping."
+
+	| r |
+	r := CborTypeRegistry new.
+	r register: SmallInteger tag: 40020
+		encode: [:i | i printString]
+		decode: [:s | s asNumber].
+	self assert: (self hexOf: (r encode: #(1 2))) equals: '82d99c546131d99c546132'.
+	self assert: (r decode: (r encode: #(1 2))) equals: #(1 2)
 %
 
 ! ------------------- CborTestAddress (test fixture, see spec/types.cddl)

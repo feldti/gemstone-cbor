@@ -11,7 +11,7 @@ Eine Implementierung von **CBOR** (Concise Binary Object Representation, [RFC 89
 - Robustes Decodieren: Jede fehlerhafte Eingabe löst `CborError` aus, die Verschachtelungstiefe ist begrenzt
 - Typ-Registry: eigene Klassen zentral auf Tags oder Typnamen abbilden
 - Gemeinsamer Datenvertrag für mehrere Sprachen: CDDL-Schema und sprachneutrale Testvektoren in `spec/`
-- 61 SUnit-Tests (dazu 7 HTTP-Tests mit Zinc), unter anderem mit den Testvektoren aus RFC 8949, Anhang A
+- 62 SUnit-Tests (dazu 7 HTTP-Tests mit Zinc), unter anderem mit den Testvektoren aus RFC 8949, Anhang A
 
 ## Installation
 
@@ -75,9 +75,9 @@ Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Sea
 
 | Version | Topaz-Fileout (frischer Kernel-Stone) | Metacello (frischer GLASS-Stone) |
 |---|---|---|
-| 3.7.5 | 61/61 (auch im Entwicklungs-Image) | 61/61 |
-| 3.7.6 | 61/61 | 61/61 |
-| 4.0.0.a5 | 61/61 | – (Produkt enthält keinen GLASS-Extent) |
+| 3.7.5 | 62/62 (auch im Entwicklungs-Image) | 62/62 |
+| 3.7.6 | 62/62 | 62/62 |
+| 4.0.0.a5 | 62/62 | – (Produkt enthält keinen GLASS-Extent) |
 
 ### Test in einem frischen Stone
 
@@ -463,7 +463,7 @@ Alle Fehler beim Encodieren und Decodieren sind Instanzen von `CborError` (Unter
 
 ```smalltalk
 CborTest suite run.               "37 Tests, alle grün"
-CborTypeRegistryTest suite run.   "17 Tests, alle grün"
+CborTypeRegistryTest suite run.   "18 Tests, alle grün"
 CborVectorTest suite run.         " 6 Tests, alle grün: prüft alle 18 gemeinsamen Testvektoren"
 CborBenchmarkTest suite run.      " 1 Test: alle Benchmark-Datensätze überstehen Encodieren und Decodieren"
 CborZincExampleTest suite run.    " 7 Tests, alle grün, benötigt Zinc (startet Server auf localhost:18765)"

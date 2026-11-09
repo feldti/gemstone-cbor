@@ -16,10 +16,9 @@ encode: anObject
 	   objects understanding #cborEncodeOn: -> delegate (CborTag, CborSimpleValue, ...)
 	   AbstractDictionary        -> major type 5 map
 	   SequenceableCollection    -> major type 4 array
-	   Set, IdentitySet          -> tag 258 + array"
+	   Set, IdentitySet          -> tag 258 + array
 
-	depth >= maxDepth
-		ifTrue: [^CborError signal: 'CBOR maximum nesting depth exceeded (cyclic structure?)'].
-	depth := depth + 1.
-	self encodeObject: anObject.
-	depth := depth - 1
+	 Nesting depth is tracked only where recursion can happen (arrays, maps, sets and
+	 objects that encode themselves), so scalar values carry no bookkeeping cost."
+
+	self encodeObject: anObject

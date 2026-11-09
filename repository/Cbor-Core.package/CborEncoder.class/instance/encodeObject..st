@@ -27,7 +27,10 @@ encodeObject: anObject
 	(anObject isKindOf: CharacterCollection) ifTrue: [^self writeString: anObject].
 	(anObject isKindOf: Character) ifTrue: [^self writeString: anObject asString].
 	(anObject isKindOf: DateAndTimeANSI) ifTrue: [^self writeDateAndTime: anObject].
-	(anObject respondsTo: #cborEncodeOn:) ifTrue: [^anObject cborEncodeOn: self].
+	(anObject respondsTo: #cborEncodeOn:) ifTrue: [
+		self enter.
+		anObject cborEncodeOn: self.
+		^self leave].
 	(anObject isKindOf: AbstractDictionary) ifTrue: [^self writeMap: anObject].
 	(anObject isKindOf: SequenceableCollection) ifTrue: [^self writeArray: anObject].
 	((anObject isKindOf: Set) or: [anObject isKindOf: IdentitySet])
