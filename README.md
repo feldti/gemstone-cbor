@@ -398,3 +398,7 @@ CborVectorTest suite run.         " 6 Tests, alle grün: prüft alle 18 gemeinsa
 - **Floats:** NaN wird immer als `f9 7e00` geschrieben. Ein NaN-Payload geht dabei verloren.
 - **Mengen:** Beim Decodieren von Tag 258 entsteht ein `Set`. Ein `IdentitySet` wird zwar als Tag 258 geschrieben, kommt aber als `Set` zurück.
 - **Datum:** `DateAndTime` wird als Unix-Sekunden (Tag 1) geschrieben. Der Zeitzonen-Offset geht dabei verloren, decodiert wird in UTC.
+
+## Lizenz
+
+MIT, siehe [LICENSE](LICENSE).
