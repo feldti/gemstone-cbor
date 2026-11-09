@@ -85,7 +85,7 @@ run
 | ws total bad |
 ws := WriteStream on: String new.
 total := 0. bad := 0.
-{CborTest. CborTypeRegistryTest. CborVectorTest} do: [:cls | | r |
+{CborTest. CborTypeRegistryTest. CborVectorTest. CborBenchmarkTest} do: [:cls | | r |
 	r := cls suite run.
 	total := total + r runCount.
 	bad := bad + r failureCount + r errorCount.

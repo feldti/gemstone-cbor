@@ -1,0 +1,15 @@
+{
+	"category": "Cbor-Benchmarks",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"datasets",
+		"runs",
+		"seed"
+	],
+	"name": "CborBenchmark",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

@@ -2,17 +2,19 @@ writing - low level
 writeFloat: aFloat
 	"Write aFloat. With shortestFloats (default) or canonical mode the shortest of
 	 half, single and double precision that represents the value exactly is used;
-	 NaN is written as the canonical half-precision quiet NaN (f9 7e00)."
+	 NaN is written as the canonical half-precision quiet NaN (f9 7e00).
+	 The bit pattern is split into two 32-bit halves so that all arithmetic stays
+	 within SmallIntegers."
 
-	| bytes bits sign exp mant e full shift |
+	| bytes hi lo sign exp mant e full shift |
 	(shortestFloats or: [canonical]) ifFalse: [^self writeDouble: aFloat].
 	bytes := ByteArray new: 8.
 	bytes doubleAt: 1 put: aFloat asFloat.
-	bits := 0.
-	bytes do: [:b | bits := (bits bitShift: 8) + b].
-	sign := bits bitShift: -63.
-	exp := (bits bitShift: -52) bitAnd: 16r7FF.
-	mant := bits bitAnd: 16rFFFFFFFFFFFFF.
+	hi := bytes unsigned32At: 1.
+	lo := bytes unsigned32At: 5.
+	sign := hi bitShift: -31.
+	exp := (hi bitShift: -20) bitAnd: 16r7FF.
+	mant := ((hi bitAnd: 16rFFFFF) bitShift: 32) + lo.
 	exp = 16r7FF ifTrue: [
 		mant = 0 ifTrue: [^self writeHalfBits: (sign bitShift: 15) + 16r7C00].
 		^self writeHalfBits: 16r7E00].

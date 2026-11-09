@@ -1,0 +1,11 @@
+{
+	"category": "Cbor-Benchmarks",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [],
+	"name": "CborBenchmarkTest",
+	"pools": [],
+	"super": "TestCase",
+	"type": "normal"
+}

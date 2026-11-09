@@ -1,3 +1,5 @@
 instance creation
 onBytes: aByteArray
-	^self on: (ReadStream on: aByteArray asByteArray)
+	"Answer a decoder that reads aByteArray directly by index (faster than a stream)."
+
+	^CborByteArrayDecoder basicNew initialize setBytes: aByteArray asByteArray

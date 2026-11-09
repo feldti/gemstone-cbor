@@ -1,0 +1,15 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"bytes",
+		"position",
+		"limit"
+	],
+	"name": "CborByteArrayDecoder",
+	"pools": [],
+	"super": "CborDecoder",
+	"type": "normal"
+}

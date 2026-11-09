@@ -1,0 +1,1 @@
+Encode/decode timings for typical data sets, compared with NeoJSON if loaded. CborBenchmark new report.

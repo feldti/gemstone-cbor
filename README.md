@@ -11,7 +11,7 @@ Eine Implementierung von **CBOR** (Concise Binary Object Representation, [RFC 89
 - Robustes Decodieren: Jede fehlerhafte Eingabe löst `CborError` aus, die Verschachtelungstiefe ist begrenzt
 - Typ-Registry: eigene Klassen zentral auf Tags oder Typnamen abbilden
 - Gemeinsamer Datenvertrag für mehrere Sprachen: CDDL-Schema und sprachneutrale Testvektoren in `spec/`
-- 60 SUnit-Tests, unter anderem mit den Testvektoren aus RFC 8949, Anhang A
+- 61 SUnit-Tests (dazu 7 HTTP-Tests mit Zinc), unter anderem mit den Testvektoren aus RFC 8949, Anhang A
 
 ## Installation
 
@@ -34,10 +34,11 @@ Für einen lokalen Checkout lautet das Repository `'filetree:///pfad/zu/gemstone
 |---|---|
 | `Cbor-Core` | die Bibliothek |
 | `Cbor-Tests` | SUnit-Tests und Beispielklassen (benötigt `Cbor-Core`) |
+| `Cbor-Benchmarks` | `CborBenchmark` (CBOR gegen NeoJSON, falls geladen) |
 | `Cbor-Zinc-Examples` | HTTP-Beispiele und -Tests mit Zinc (Gruppe `Zinc`, nicht in `default`; benötigt Zinc im Image) |
 
 Gruppen der `BaselineOfCbor`:
-- `default`: alles
+- `default`: Core, Tests und Benchmarks
 - `Core`: nur die Bibliothek
 - `Tests`: nur die Tests
 
@@ -74,9 +75,9 @@ Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Sea
 
 | Version | Topaz-Fileout (frischer Kernel-Stone) | Metacello (frischer GLASS-Stone) |
 |---|---|---|
-| 3.7.5 | 60/60 (auch im Entwicklungs-Image) | 60/60 |
-| 3.7.6 | 60/60 | 60/60 |
-| 4.0.0.a5 | 60/60 | – (Produkt enthält keinen GLASS-Extent) |
+| 3.7.5 | 61/61 (auch im Entwicklungs-Image) | 61/61 |
+| 3.7.6 | 61/61 | 61/61 |
+| 4.0.0.a5 | 61/61 | – (Produkt enthält keinen GLASS-Extent) |
 
 ### Test in einem frischen Stone
 
@@ -354,6 +355,14 @@ Auf GitHub übernimmt das die Action `.github/workflows/cddl.yml`. Sie läuft be
 1. Die eingecheckten Vektoren müssen dem entsprechen, was `generate_vectors.py` erzeugt. Sonst fehlt ein `python3 spec/generate_vectors.py` vor dem Commit.
 2. `validate_vectors.py` muss für alle Vektoren mit dem Schema übereinstimmen.
 
+### Performance
+
+[`docs/performance.md`](docs/performance.md) enthält Messungen gegen NeoJSON und beschreibt die Optimierungen. In GemStone ist CBOR 3- bis 30-mal schneller beim Decodieren und meist deutlich schneller beim Encodieren, bei 25–50 % weniger Bytes. Selbst messen:
+
+```smalltalk
+CborBenchmark new report.
+```
+
 ### CBOR über HTTP
 
 Wie Requests und Responses aussehen müssen, beschreibt [`docs/http.md`](docs/http.md):
@@ -444,6 +453,7 @@ Alle Fehler beim Encodieren und Decodieren sind Instanzen von `CborError` (Unter
 | `CborSimpleValue` | Simple Value (`value`); `CborSimpleValue undefined` für `undefined` |
 | `CborTypeRegistry` | zentrale Zuordnung Klasse ↔ Tag bzw. Typname; liefert passende Encoder und Decoder |
 | `CborTypeMapping` | eine einzelne Zuordnung in der Registry |
+| `CborByteArrayDecoder` | schneller Decoder direkt über einem `ByteArray`; liefert `CborDecoder onBytes:` |
 | `CborTypedEncoder` | Encoder, der vor der eingebauten Abbildung die Registry fragt |
 | `CborError` | Fehlerklasse |
 | `CborTest`, `CborTypeRegistryTest`, `CborVectorTest` | SUnit-Tests |
@@ -455,6 +465,7 @@ Alle Fehler beim Encodieren und Decodieren sind Instanzen von `CborError` (Unter
 CborTest suite run.               "37 Tests, alle grün"
 CborTypeRegistryTest suite run.   "17 Tests, alle grün"
 CborVectorTest suite run.         " 6 Tests, alle grün: prüft alle 18 gemeinsamen Testvektoren"
+CborBenchmarkTest suite run.      " 1 Test: alle Benchmark-Datensätze überstehen Encodieren und Decodieren"
 CborZincExampleTest suite run.    " 7 Tests, alle grün, benötigt Zinc (startet Server auf localhost:18765)"
 ```
 

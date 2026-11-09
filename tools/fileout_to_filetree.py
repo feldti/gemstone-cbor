@@ -33,14 +33,15 @@ FILEOUTS = [ROOT / "src" / "CborLibrary.gs", ROOT / "src" / "CborVectorTest-vect
             ROOT / "src" / "CborZincExamples.gs"]
 OUT = ROOT / "repository"
 
-CORE, TESTS, ZINC = "Cbor-Core", "Cbor-Tests", "Cbor-Zinc-Examples"
+CORE, TESTS, ZINC, BENCH = "Cbor-Core", "Cbor-Tests", "Cbor-Zinc-Examples", "Cbor-Benchmarks"
 PACKAGE_OF = {
     "Cbor": CORE, "CborError": CORE, "CborTag": CORE, "CborSimpleValue": CORE,
-    "CborEncoder": CORE, "CborTypedEncoder": CORE, "CborDecoder": CORE,
+    "CborEncoder": CORE, "CborTypedEncoder": CORE, "CborDecoder": CORE, "CborByteArrayDecoder": CORE,
     "CborTypeMapping": CORE, "CborTypeRegistry": CORE,
     "CborTest": TESTS, "CborTypeRegistryTest": TESTS, "CborVectorTest": TESTS,
     "CborTestPoint": TESTS, "CborTestAddress": TESTS, "CborTestCustomer": TESTS,
     "CborHttpExample": ZINC, "CborZincExampleTest": ZINC,
+    "CborBenchmark": BENCH, "CborBenchmarkTest": BENCH,
 }
 
 COMMENTS = {
@@ -51,6 +52,7 @@ COMMENTS = {
     "CborEncoder": "Writes CBOR to a binary write stream.",
     "CborTypedEncoder": "Encoder that consults a CborTypeRegistry before the built-in type mapping.",
     "CborDecoder": "Reads CBOR from a binary read stream.",
+    "CborByteArrayDecoder": "Decoder reading directly from a ByteArray by index; answered by CborDecoder onBytes:.",
     "CborTypeMapping": "One mapping between a class and a CBOR tag number or type name.",
     "CborTypeRegistry": "Central mapping of classes to CBOR tags (or tag 27 type names); "
                         "answers configured encoders and decoders.",
@@ -62,6 +64,8 @@ COMMENTS = {
     "CborTestCustomer": "Test fixture: customer, tag 40002 in spec/types.cddl.",
     "CborHttpExample": "Example Zinc server speaking application/cbor (see docs/http.md). Requires Zinc.",
     "CborZincExampleTest": "Runs the HTTP examples from docs/http.md against a local Zinc server. Requires Zinc.",
+    "CborBenchmark": "Encode/decode timings for typical data sets, compared with NeoJSON if loaded. CborBenchmark new report.",
+    "CborBenchmarkTest": "Checks that the benchmark data sets round-trip (no timing assertions).",
 }
 
 BASELINE_SOURCE = """baseline: spec
@@ -70,9 +74,11 @@ BASELINE_SOURCE = """baseline: spec
 		spec
 			package: 'Cbor-Core';
 			package: 'Cbor-Tests' with: [spec requires: #('Cbor-Core')];
-			package: 'Cbor-Zinc-Examples' with: [spec requires: #('Cbor-Core' 'Cbor-Tests')].
+			package: 'Cbor-Zinc-Examples' with: [spec requires: #('Cbor-Core' 'Cbor-Tests')];
+			package: 'Cbor-Benchmarks' with: [spec requires: #('Cbor-Core')].
 		spec
-			group: 'default' with: #('Core' 'Tests');
+			group: 'default' with: #('Core' 'Tests' 'Benchmarks');
+			group: 'Benchmarks' with: #('Cbor-Benchmarks');
 			group: 'Core' with: #('Cbor-Core');
 			group: 'Tests' with: #('Cbor-Tests');
 			group: 'Zinc' with: #('Cbor-Zinc-Examples')]"""
@@ -165,7 +171,7 @@ def main():
         shutil.rmtree(OUT)
     write(OUT / ".filetree", json_text({"packageExtension": ".package", "propertyFileExtension": ".json"}))
 
-    packages = {name: write_package_skeleton(name) for name in (CORE, TESTS, ZINC)}
+    packages = {name: write_package_skeleton(name) for name in (CORE, TESTS, ZINC, BENCH)}
     class_dirs = {}
     for superclass, name, iv, cv, civ, pools, _options in CLASS_DEF.findall(text):
         pkg = PACKAGE_OF[name]  # KeyError = new class without a package assignment
@@ -182,7 +188,7 @@ def main():
                      "BaselineOfCbor", comment="Metacello baseline for the CBOR library.")
     add_method(bdir, False, "baseline", BASELINE_SOURCE)
 
-    for name in (CORE, TESTS, ZINC, "BaselineOfCbor"):
+    for name in (CORE, TESTS, ZINC, BENCH, "BaselineOfCbor"):
         write_monticello_meta(OUT / f"{name}.package", name)
 
     missing = set(PACKAGE_OF) - set(class_dirs)

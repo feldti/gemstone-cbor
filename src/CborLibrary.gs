@@ -86,6 +86,36 @@ CborEncoder subclass: 'CborTypedEncoder'
 %
 
 run
+CborDecoder subclass: 'CborByteArrayDecoder'
+	instVarNames: #( bytes position limit )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+Object subclass: 'CborBenchmark'
+	instVarNames: #( datasets runs seed )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+TestCase subclass: 'CborBenchmarkTest'
+	instVarNames: #()
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
 Object subclass: 'CborTypeMapping'
 	instVarNames: #( typeClass tag typeName encodeBlock decodeBlock )
 	classVars: #()
@@ -307,7 +337,9 @@ removeallclassmethods CborEncoder
 category: 'instance creation'
 classmethod: CborEncoder
 new
-	"Answer an encoder writing into a fresh ByteArray."
+	"Answer an encoder writing into a fresh ByteArray.
+	 (A hand-written growable buffer was measured to be slower than GemStone's
+	 WriteStream on a ByteArray, see CborBenchmark.)"
 
 	^self on: (WriteStream on: ByteArray new)
 %
@@ -429,9 +461,22 @@ encode: anObject
 category: 'private'
 method: CborEncoder
 encodeObject: anObject
+	"Exact-class checks for the most frequent kernel classes come first (cheap identity
+	 comparisons); everything else goes through the general isKindOf: chain."
+
+	| cls |
+	cls := anObject class.
+	cls == SmallInteger ifTrue: [
+		(anObject >= 0 and: [anObject < 24]) ifTrue: [^stream nextPut: anObject].
+		^self writeInteger: anObject].
+	(cls == String or: [cls == Unicode7]) ifTrue: [^self writeString: anObject].
 	anObject == nil ifTrue: [^self writeNull].
 	anObject == true ifTrue: [^self writeTrue].
 	anObject == false ifTrue: [^self writeFalse].
+	cls == SmallDouble ifTrue: [^self writeFloat: anObject].
+	cls == Array ifTrue: [^self writeArray: anObject].
+	cls == Dictionary ifTrue: [^self writeMap: anObject].
+	cls == ByteArray ifTrue: [^self writeBytes: anObject].
 	(anObject isKindOf: Integer) ifTrue: [^self writeInteger: anObject].
 	(anObject isKindOf: BinaryFloat) ifTrue: [^self writeFloat: anObject].
 	(anObject isKindOf: ScaledDecimal) ifTrue: [^self writeScaledDecimal: anObject].
@@ -454,14 +499,17 @@ encodeObject: anObject
 category: 'writing - low level'
 method: CborEncoder
 writeHead: majorType value: anInteger
-	"Write the initial byte(s) of a data item with the shortest argument encoding."
+	"Write the initial byte(s) of a data item with the shortest argument encoding.
+	 One- and two-byte arguments are written inline (the common case)."
 
 	| base |
 	base := majorType bitShift: 5.
 	anInteger < 0 ifTrue: [^CborError signal: 'CBOR head argument must not be negative'].
 	anInteger < 24 ifTrue: [^stream nextPut: base + anInteger].
 	anInteger < 256 ifTrue: [stream nextPut: base + 24; nextPut: anInteger. ^self].
-	anInteger < 65536 ifTrue: [stream nextPut: base + 25. ^self writeUnsigned: anInteger bytes: 2].
+	anInteger < 65536 ifTrue: [
+		stream nextPut: base + 25; nextPut: (anInteger bitShift: -8); nextPut: (anInteger bitAnd: 255).
+		^self].
 	anInteger < 4294967296 ifTrue: [stream nextPut: base + 26. ^self writeUnsigned: anInteger bytes: 4].
 	anInteger < 18446744073709551616 ifTrue: [stream nextPut: base + 27. ^self writeUnsigned: anInteger bytes: 8].
 	^CborError signal: 'CBOR head argument exceeds 64 bits'
@@ -593,9 +641,13 @@ category: 'writing - low level'
 method: CborEncoder
 writeInteger: anInteger
 	"Write an integer of any size. Values outside the 64-bit range use
-	 bignum tags 2 (positive) and 3 (negative)."
+	 bignum tags 2 (positive) and 3 (negative). SmallIntegers take a fast path
+	 that never compares against LargeIntegers."
 
 	| n |
+	anInteger class == SmallInteger ifTrue: [
+		anInteger >= 0 ifTrue: [^self writeHead: 0 value: anInteger].
+		^self writeHead: 1 value: -1 - anInteger].
 	anInteger >= 0
 		ifTrue: [
 			anInteger < 18446744073709551616 ifTrue: [^self writeHead: 0 value: anInteger].
@@ -627,12 +679,11 @@ writeString: aCharacterCollection
 category: 'writing - low level'
 method: CborEncoder
 writeUtf8: aUtf8
-	"Write already UTF-8 encoded bytes as a text string (major type 3)."
+	"Write already UTF-8 encoded bytes as a text string (major type 3).
+	 Utf8 is a ByteArray subclass, so it is written without copying."
 
-	| bytes |
-	bytes := aUtf8 asByteArray.
-	self writeHead: 3 value: bytes size.
-	stream nextPutAll: bytes
+	self writeHead: 3 value: aUtf8 size.
+	stream nextPutAll: aUtf8
 %
 
 category: 'writing - low level'
@@ -651,17 +702,19 @@ method: CborEncoder
 writeFloat: aFloat
 	"Write aFloat. With shortestFloats (default) or canonical mode the shortest of
 	 half, single and double precision that represents the value exactly is used;
-	 NaN is written as the canonical half-precision quiet NaN (f9 7e00)."
+	 NaN is written as the canonical half-precision quiet NaN (f9 7e00).
+	 The bit pattern is split into two 32-bit halves so that all arithmetic stays
+	 within SmallIntegers."
 
-	| bytes bits sign exp mant e full shift |
+	| bytes hi lo sign exp mant e full shift |
 	(shortestFloats or: [canonical]) ifFalse: [^self writeDouble: aFloat].
 	bytes := ByteArray new: 8.
 	bytes doubleAt: 1 put: aFloat asFloat.
-	bits := 0.
-	bytes do: [:b | bits := (bits bitShift: 8) + b].
-	sign := bits bitShift: -63.
-	exp := (bits bitShift: -52) bitAnd: 16r7FF.
-	mant := bits bitAnd: 16rFFFFFFFFFFFFF.
+	hi := bytes unsigned32At: 1.
+	lo := bytes unsigned32At: 5.
+	sign := hi bitShift: -31.
+	exp := (hi bitShift: -20) bitAnd: 16r7FF.
+	mant := ((hi bitAnd: 16rFFFFF) bitShift: 32) + lo.
 	exp = 16r7FF ifTrue: [
 		mant = 0 ifTrue: [^self writeHalfBits: (sign bitShift: 15) + 16r7C00].
 		^self writeHalfBits: 16r7E00].
@@ -830,7 +883,9 @@ on: aBinaryReadStream
 category: 'instance creation'
 classmethod: CborDecoder
 onBytes: aByteArray
-	^self on: (ReadStream on: aByteArray asByteArray)
+	"Answer a decoder that reads aByteArray directly by index (faster than a stream)."
+
+	^CborByteArrayDecoder basicNew initialize setBytes: aByteArray asByteArray
 %
 
 category: 'initialization'
@@ -1154,8 +1209,8 @@ decodeSimpleOrFloat: info
 		v < 32 ifTrue: [^self signalError: 'invalid two-byte encoding of simple value ', v printString].
 		^CborSimpleValue value: v].
 	info = 25 ifTrue: [^self floatFromHalfBits: (self readUnsigned: 2)].
-	info = 26 ifTrue: [^(self readBytes: 4) floatAt: 1].
-	info = 27 ifTrue: [^(self readBytes: 8) doubleAt: 1].
+	info = 26 ifTrue: [^self readSingle].
+	info = 27 ifTrue: [^self readDouble].
 	info = 31 ifTrue: [^self].
 	^self signalError: 'reserved additional information value ', info printString
 %
@@ -1334,6 +1389,22 @@ daysFromCivilYear: y month: m day: d
 	doy := ((153 * mp) + 2) // 5 + d - 1.
 	doe := (yoe * 365) + (yoe // 4) - (yoe // 100) + doy.
 	^(era * 146097) + doe - 719468
+%
+
+category: 'private - reading'
+method: CborDecoder
+readSingle
+	"Answer the next 4 bytes as an IEEE 754 single precision Float."
+
+	^(self readBytes: 4) floatAt: 1
+%
+
+category: 'private - reading'
+method: CborDecoder
+readDouble
+	"Answer the next 8 bytes as an IEEE 754 double precision Float."
+
+	^(self readBytes: 8) doubleAt: 1
 %
 
 ! ------------------- Cbor (facade)
@@ -2837,4 +2908,274 @@ testFullCustomerContent
 	self assert: customer addresses first zip equals: '10115'.
 	self assert: customer addresses last zip isNil.
 	self assert: customer createdAt asPosixSeconds equals: 1363896240
+%
+
+! ------------------- CborByteArrayDecoder (fast decoder over a ByteArray)
+removeallmethods CborByteArrayDecoder
+removeallclassmethods CborByteArrayDecoder
+
+category: 'private'
+method: CborByteArrayDecoder
+setBytes: aByteArray
+	bytes := aByteArray.
+	position := 0.
+	limit := aByteArray size
+%
+
+category: 'accessing'
+method: CborByteArrayDecoder
+position
+	"Number of bytes consumed so far."
+
+	^position
+%
+
+category: 'testing'
+method: CborByteArrayDecoder
+atEnd
+	^position >= limit
+%
+
+category: 'private - reading'
+method: CborByteArrayDecoder
+readByte
+	position >= limit ifTrue: [^self signalError: 'unexpected end of input'].
+	position := position + 1.
+	^bytes at: position
+%
+
+category: 'private - reading'
+method: CborByteArrayDecoder
+readUnsigned: byteCount
+	"byteCount is 1, 2, 4 or 8; read big-endian with a primitive."
+
+	| v |
+	position + byteCount > limit ifTrue: [^self signalError: 'unexpected end of input'].
+	v := bytes at: position + 1 signed: false width: byteCount.
+	position := position + byteCount.
+	^v
+%
+
+category: 'private - reading'
+method: CborByteArrayDecoder
+readBytes: count
+	"A bogus length beyond the input fails here, before anything is allocated."
+
+	| result |
+	count > (limit - position) ifTrue: [^self signalError: 'unexpected end of input'].
+	count = 0 ifTrue: [^ByteArray new].
+	result := bytes copyFrom: position + 1 to: position + count.
+	position := position + count.
+	^result
+%
+
+category: 'private - reading'
+method: CborByteArrayDecoder
+readSingle
+	| v |
+	position + 4 > limit ifTrue: [^self signalError: 'unexpected end of input'].
+	v := bytes at: position + 1 signed: false width: -4.
+	position := position + 4.
+	^v
+%
+
+category: 'private - reading'
+method: CborByteArrayDecoder
+readDouble
+	| v |
+	position + 8 > limit ifTrue: [^self signalError: 'unexpected end of input'].
+	v := bytes at: position + 1 signed: false width: -8.
+	position := position + 8.
+	^v
+%
+
+! ------------------- CborBenchmark (CBOR vs. NeoJSON if loaded)
+removeallmethods CborBenchmark
+removeallclassmethods CborBenchmark
+
+category: 'instance creation'
+classmethod: CborBenchmark
+new
+	^self basicNew initializeScale: 1
+%
+
+category: 'instance creation'
+classmethod: CborBenchmark
+scale: aNumber
+	"Dataset sizes are multiplied by aNumber (1 = full benchmark)."
+
+	^self basicNew initializeScale: aNumber
+%
+
+category: 'initialization'
+method: CborBenchmark
+initializeScale: aNumber
+	runs := 5.
+	seed := 12345.
+	datasets := OrderedCollection new.
+	datasets add: 'customers' -> (self customers: (1000 * aNumber) ceiling).
+	datasets add: 'small ints' -> (self smallInts: (10000 * aNumber) ceiling).
+	datasets add: 'floats' -> (self floats: (10000 * aNumber) ceiling).
+	datasets add: 'strings' -> (self strings: (2000 * aNumber) ceiling).
+	datasets add: 'bytes 64K' -> (self bytes: (65536 * aNumber) ceiling)
+%
+
+category: 'accessing'
+method: CborBenchmark
+datasets
+	^datasets
+%
+
+category: 'accessing'
+method: CborBenchmark
+runs: anInteger
+	"Each measurement is the best of anInteger runs."
+
+	runs := anInteger
+%
+
+category: 'data'
+method: CborBenchmark
+nextRandom: limit
+	"Deterministic pseudo random numbers (LCG), so every run uses the same data."
+
+	seed := (seed * 1103515245 + 12345) \\ 2147483648.
+	^seed \\ limit
+%
+
+category: 'data'
+method: CborBenchmark
+customers: count
+	"Typical JSON-style documents with string keys."
+
+	^(1 to: count) collect: [:i | | address customer |
+		address := Dictionary new.
+		address at: 'street' put: 'Hauptstr. ' , i printString;
+			at: 'city' put: 'Berlin';
+			at: 'zip' put: '10115'.
+		customer := Dictionary new.
+		customer at: 'name' put: 'Kunde ' , (self nextRandom: 99999) printString;
+			at: 'id' put: (self nextRandom: 1000000);
+			at: 'active' put: (self nextRandom: 2) = 0;
+			at: 'addresses' put: (Array with: address);
+			at: 'createdAt' put: 1700000000 + (self nextRandom: 10000000).
+		customer]
+%
+
+category: 'data'
+method: CborBenchmark
+smallInts: count
+	^(1 to: count) collect: [:i | self nextRandom: 1000]
+%
+
+category: 'data'
+method: CborBenchmark
+floats: count
+	"Mostly doubles that need 64 bits, some exactly representable in 16 or 32 bits."
+
+	^(1 to: count) collect: [:i |
+		i \\ 4 = 0
+			ifTrue: [(self nextRandom: 1000) asFloat / 8]
+			ifFalse: [(self nextRandom: 1000000) asFloat / 997]]
+%
+
+category: 'data'
+method: CborBenchmark
+strings: count
+	^(1 to: count) collect: [:i |
+		'Zeile ' , i printString , ': Lorem ipsum dolor sit amet, consectetur adipiscing elit']
+%
+
+category: 'data'
+method: CborBenchmark
+bytes: count
+	| bytes |
+	bytes := ByteArray new: count.
+	1 to: count do: [:i | bytes at: i put: (self nextRandom: 256)].
+	^bytes
+%
+
+category: 'measuring'
+method: CborBenchmark
+bestMicroseconds: aBlock
+	"Answer the fastest of runs executions of aBlock, in microseconds."
+
+	| best |
+	best := nil.
+	runs timesRepeat: [| t |
+		t := System microsecondsToRun: aBlock.
+		(best isNil or: [t < best]) ifTrue: [best := t]].
+	^best
+%
+
+category: 'measuring'
+method: CborBenchmark
+jsonWriter
+	^System myUserProfile symbolList objectNamed: #NeoJSONWriter
+%
+
+category: 'measuring'
+method: CborBenchmark
+jsonReader
+	^System myUserProfile symbolList objectNamed: #NeoJSONReader
+%
+
+category: 'measuring'
+method: CborBenchmark
+measure
+	"Answer an Array of result rows:
+	 {name. cborSize. cborEncodeUs. cborDecodeUs. jsonSize. jsonEncodeUs. jsonDecodeUs}
+	 JSON entries are nil when NeoJSON is not loaded or the data is binary."
+
+	^datasets asArray collect: [:assoc | | data cbor json row |
+		data := assoc value.
+		cbor := Cbor encode: data.
+		row := Array new: 7.
+		row at: 1 put: assoc key.
+		row at: 2 put: cbor size.
+		row at: 3 put: (self bestMicroseconds: [Cbor encode: data]).
+		row at: 4 put: (self bestMicroseconds: [Cbor decode: cbor]).
+		(self jsonWriter notNil and: [(data isKindOf: ByteArray) not]) ifTrue: [
+			json := self jsonWriter toString: data.
+			row at: 5 put: json size.
+			row at: 6 put: (self bestMicroseconds: [self jsonWriter toString: data]).
+			row at: 7 put: (self bestMicroseconds: [self jsonReader fromString: json])].
+		row]
+%
+
+category: 'reporting'
+method: CborBenchmark
+report
+	"Answer a text table; times in milliseconds (best of runs)."
+
+	| ws ms |
+	ms := [:us | us isNil ifTrue: ['-'] ifFalse: [((us / 100) rounded / 10.0) printString]].
+	ws := WriteStream on: String new.
+	ws nextPutAll: 'dataset | CBOR bytes | CBOR enc ms | CBOR dec ms | JSON bytes | JSON enc ms | JSON dec ms'; lf.
+	self measure do: [:row |
+		ws nextPutAll: (row at: 1);
+			nextPutAll: ' | '; print: (row at: 2);
+			nextPutAll: ' | '; nextPutAll: (ms value: (row at: 3));
+			nextPutAll: ' | '; nextPutAll: (ms value: (row at: 4));
+			nextPutAll: ' | '; nextPutAll: ((row at: 5) ifNil: ['-'] ifNotNil: [:s | s printString]);
+			nextPutAll: ' | '; nextPutAll: (ms value: (row at: 6));
+			nextPutAll: ' | '; nextPutAll: (ms value: (row at: 7)); lf].
+	^ws contents
+%
+
+! ------------------- CborBenchmarkTest
+removeallmethods CborBenchmarkTest
+removeallclassmethods CborBenchmarkTest
+
+category: 'tests'
+method: CborBenchmarkTest
+testBenchmarkRunsAndRoundTrips
+	"Small scale run: every dataset round-trips and the report has one row per dataset."
+
+	| bench report |
+	bench := (CborBenchmark scale: 1/20) runs: 1; yourself.
+	bench datasets do: [:assoc |
+		self assert: (Cbor decode: (Cbor encode: assoc value)) equals: assoc value].
+	report := bench report.
+	self assert: (report occurrencesOf: Character lf) equals: bench datasets size + 1
 %
