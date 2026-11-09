@@ -26,7 +26,7 @@ topaz 1> commit
 
 `CborVectorTest-vectors.gs` enthält nur die generierten Testvektoren für `CborVectorTest` (siehe unten).
 
-Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Seaside oder Rowan. Getestet ist das mit GemStone 3.7.5 (Entwicklungs-Image und frischer Stone aus dem leeren `extent0.dbf`) und 3.7.6 (frischer Stone).
+Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Seaside oder Rowan. Getestet ist das mit GemStone 3.7.5 (Entwicklungs-Image und frischer Stone aus dem leeren `extent0.dbf`) sowie 3.7.6 und 4.0.0.a5 (jeweils frischer Stone).
 
 ### Test in einem frischen Stone
 
