@@ -76,7 +76,57 @@ Object subclass: 'Cbor'
 %
 
 run
+CborEncoder subclass: 'CborTypedEncoder'
+	instVarNames: #( registry )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+Object subclass: 'CborTypeMapping'
+	instVarNames: #( typeClass tag typeName encodeBlock decodeBlock )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+Object subclass: 'CborTypeRegistry'
+	instVarNames: #( byClass byTag byName )
+	classVars: #( Default )
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+Object subclass: 'CborTestPoint'
+	instVarNames: #( x y )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
 TestCase subclass: 'CborTest'
+	instVarNames: #()
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+TestCase subclass: 'CborTypeRegistryTest'
 	instVarNames: #()
 	classVars: #()
 	classInstVars: #()
@@ -707,10 +757,22 @@ encodedBytesOf: anObject
 	"Encode anObject with the receiver's options into a separate ByteArray."
 
 	| sub |
-	sub := self class new.
-	sub canonical: canonical; shortestFloats: shortestFloats; maxDepth: maxDepth - depth.
+	sub := self newNestedEncoder.
 	sub encode: anObject.
 	^sub contents
+%
+
+category: 'private'
+method: CborEncoder
+newNestedEncoder
+	"Answer a fresh encoder with the receiver's options, used to encode map keys
+	 separately for canonical ordering. Subclasses add their own state."
+
+	^self class new
+		canonical: canonical;
+		shortestFloats: shortestFloats;
+		maxDepth: maxDepth - depth;
+		yourself
 %
 
 category: 'private'
@@ -1805,4 +1867,644 @@ testMaxDepth
 	decoder := CborDecoder onBytes: (self hex: '818100').
 	decoder maxDepth: 1.
 	self should: [decoder decode] raise: CborError
+%
+
+! ------------------- CborTypedEncoder
+removeallmethods CborTypedEncoder
+removeallclassmethods CborTypedEncoder
+
+category: 'accessing'
+method: CborTypedEncoder
+registry
+	^registry
+%
+
+category: 'accessing'
+method: CborTypedEncoder
+registry: aCborTypeRegistry
+	registry := aCborTypeRegistry
+%
+
+category: 'private'
+method: CborTypedEncoder
+encodeObject: anObject
+	"Registered classes take precedence over the built-in mapping.
+	 Lookup is by exact class: subclasses must be registered themselves."
+
+	| mapping |
+	mapping := registry isNil ifFalse: [registry mappingForClass: anObject class].
+	mapping isNil ifTrue: [^super encodeObject: anObject].
+	mapping encode: anObject on: self
+%
+
+category: 'private'
+method: CborTypedEncoder
+newNestedEncoder
+	^super newNestedEncoder registry: registry; yourself
+%
+
+! ------------------- CborTypeMapping
+removeallmethods CborTypeMapping
+removeallclassmethods CborTypeMapping
+
+category: 'instance creation'
+classmethod: CborTypeMapping
+forClass: aClass tag: tagNumberOrNil typeName: aStringOrNil encode: encodeBlockOrNil decode: decodeBlockOrNil
+	^self new
+		setClass: aClass
+		tag: tagNumberOrNil
+		typeName: aStringOrNil
+		encode: encodeBlockOrNil
+		decode: decodeBlockOrNil
+%
+
+category: 'private'
+method: CborTypeMapping
+setClass: aClass tag: tagNumberOrNil typeName: aStringOrNil encode: encodeBlockOrNil decode: decodeBlockOrNil
+	typeClass := aClass.
+	tag := tagNumberOrNil.
+	typeName := aStringOrNil.
+	encodeBlock := encodeBlockOrNil.
+	decodeBlock := decodeBlockOrNil
+%
+
+category: 'accessing'
+method: CborTypeMapping
+typeClass
+	^typeClass
+%
+
+category: 'accessing'
+method: CborTypeMapping
+tag
+	"The tag number, or nil for a mapping by type name (tag 27)."
+
+	^tag
+%
+
+category: 'accessing'
+method: CborTypeMapping
+typeName
+	"The type name used with tag 27, or nil for a mapping by tag number."
+
+	^typeName
+%
+
+category: 'testing'
+method: CborTypeMapping
+isNamed
+	^typeName notNil
+%
+
+category: 'converting'
+method: CborTypeMapping
+payloadFor: anObject
+	"Answer the CBOR-encodable payload representing anObject."
+
+	^encodeBlock isNil
+		ifTrue: [anObject cborPayload]
+		ifFalse: [encodeBlock value: anObject]
+%
+
+category: 'converting'
+method: CborTypeMapping
+objectFrom: aPayload
+	"Answer the object reconstructed from a decoded payload."
+
+	^decodeBlock isNil
+		ifTrue: [typeClass fromCborPayload: aPayload]
+		ifFalse: [decodeBlock value: aPayload]
+%
+
+category: 'encoding'
+method: CborTypeMapping
+encode: anObject on: aCborEncoder
+	"Write anObject as tag(payload), or for named types as 27([typeName, arg1, ...])."
+
+	| payload args |
+	payload := self payloadFor: anObject.
+	typeName isNil ifTrue: [
+		aCborEncoder writeTag: tag.
+		^aCborEncoder encode: payload].
+	(payload isKindOf: SequenceableCollection)
+		ifFalse: [^CborError signal: 'payload of named CBOR type ', typeName, ' must be a sequence of constructor arguments'].
+	args := payload asArray.
+	aCborEncoder writeTag: 27.
+	aCborEncoder writeArrayHeader: args size + 1.
+	aCborEncoder encode: typeName.
+	args do: [:each | aCborEncoder encode: each]
+%
+
+category: 'printing'
+method: CborTypeMapping
+printOn: aStream
+	aStream nextPutAll: 'CborTypeMapping('; nextPutAll: typeClass name; nextPutAll: ' <-> '.
+	typeName isNil
+		ifTrue: [aStream nextPutAll: 'tag '; print: tag]
+		ifFalse: [aStream nextPutAll: '27 '; print: typeName].
+	aStream nextPut: $)
+%
+
+! ------------------- CborTypeRegistry
+removeallmethods CborTypeRegistry
+removeallclassmethods CborTypeRegistry
+
+category: 'instance creation'
+classmethod: CborTypeRegistry
+new
+	^self basicNew initialize
+%
+
+category: 'default instance'
+classmethod: CborTypeRegistry
+default
+	"Answer the shared, persistent registry. Prefer selector-based registration
+	 (#register:tag:, #register:typeName:) here, since it stores no blocks."
+
+	Default isNil ifTrue: [Default := self new].
+	^Default
+%
+
+category: 'default instance'
+classmethod: CborTypeRegistry
+resetDefault
+	Default := nil
+%
+
+category: 'initialization'
+method: CborTypeRegistry
+initialize
+	byClass := IdentityKeyValueDictionary new.
+	byTag := Dictionary new.
+	byName := Dictionary new
+%
+
+category: 'registering'
+method: CborTypeRegistry
+register: aClass tag: tagNumber
+	"Map aClass to tagNumber. Instances must understand #cborPayload (answering an
+	 encodable object) and aClass must understand #fromCborPayload: (answering an instance)."
+
+	^self register: aClass tag: tagNumber encode: nil decode: nil
+%
+
+category: 'registering'
+method: CborTypeRegistry
+register: aClass tag: tagNumber encode: encodeBlock decode: decodeBlock
+	"Map aClass to tagNumber using blocks; useful for classes you cannot or do not want
+	 to change. encodeBlock: [:instance | payload], decodeBlock: [:payload | instance].
+	 A nil block falls back to #cborPayload / #fromCborPayload:."
+
+	| existing mapping |
+	(tagNumber isInteger and: [tagNumber >= 0 and: [tagNumber < 18446744073709551616]])
+		ifFalse: [^CborError signal: 'CBOR tag number must be an unsigned 64-bit integer'].
+	tagNumber = 27
+		ifTrue: [^CborError signal: 'tag 27 is reserved for named types, use #register:typeName:'].
+	existing := byTag at: tagNumber ifAbsent: [nil].
+	(existing notNil and: [existing typeClass ~~ aClass])
+		ifTrue: [^CborError signal: 'CBOR tag ', tagNumber printString, ' is already registered for ', existing typeClass name].
+	self unregister: aClass.
+	mapping := CborTypeMapping forClass: aClass tag: tagNumber typeName: nil encode: encodeBlock decode: decodeBlock.
+	byClass at: aClass put: mapping.
+	byTag at: tagNumber put: mapping.
+	^mapping
+%
+
+category: 'registering'
+method: CborTypeRegistry
+register: aClass typeName: aString
+	"Map aClass to a type name, encoded as tag 27 [typeName, arg1, ...].
+	 #cborPayload must answer the argument sequence, #fromCborPayload: receives it as an Array."
+
+	^self register: aClass typeName: aString encode: nil decode: nil
+%
+
+category: 'registering'
+method: CborTypeRegistry
+register: aClass typeName: aString encode: encodeBlock decode: decodeBlock
+	"Map aClass to a type name (tag 27). Only registered names are ever instantiated
+	 when decoding, so the registry acts as a whitelist."
+
+	| name existing mapping |
+	((aString isKindOf: CharacterCollection) and: [aString notEmpty])
+		ifFalse: [^CborError signal: 'CBOR type name must be a non-empty string'].
+	name := aString asString.
+	existing := byName at: name ifAbsent: [nil].
+	(existing notNil and: [existing typeClass ~~ aClass])
+		ifTrue: [^CborError signal: 'CBOR type name ', name printString, ' is already registered for ', existing typeClass name].
+	self unregister: aClass.
+	mapping := CborTypeMapping forClass: aClass tag: nil typeName: name encode: encodeBlock decode: decodeBlock.
+	byClass at: aClass put: mapping.
+	byName at: name put: mapping.
+	^mapping
+%
+
+category: 'registering'
+method: CborTypeRegistry
+unregister: aClass
+	"Remove the mapping for aClass. Answer the removed mapping or nil."
+
+	| mapping |
+	mapping := byClass removeKey: aClass ifAbsent: [nil].
+	mapping isNil ifTrue: [^nil].
+	mapping tag isNil ifFalse: [byTag removeKey: mapping tag ifAbsent: [nil]].
+	mapping typeName isNil ifFalse: [byName removeKey: mapping typeName ifAbsent: [nil]].
+	^mapping
+%
+
+category: 'accessing'
+method: CborTypeRegistry
+mappingForClass: aClass
+	^byClass at: aClass ifAbsent: [nil]
+%
+
+category: 'accessing'
+method: CborTypeRegistry
+mappingForTag: tagNumber
+	^byTag at: tagNumber ifAbsent: [nil]
+%
+
+category: 'accessing'
+method: CborTypeRegistry
+mappingForTypeName: aString
+	^byName at: aString asString ifAbsent: [nil]
+%
+
+category: 'accessing'
+method: CborTypeRegistry
+mappings
+	"Answer all mappings, sorted by tag number, then by type name."
+
+	^(byClass values asSortedCollection: [:a :b |
+		a isNamed = b isNamed
+			ifTrue: [a isNamed ifTrue: [a typeName <= b typeName] ifFalse: [a tag <= b tag]]
+			ifFalse: [b isNamed]]) asArray
+%
+
+category: 'testing'
+method: CborTypeRegistry
+isEmpty
+	^byClass isEmpty
+%
+
+category: 'encoding'
+method: CborTypeRegistry
+newEncoder
+	"Answer an encoder writing to a fresh ByteArray that knows the registered types."
+
+	^CborTypedEncoder new registry: self; yourself
+%
+
+category: 'encoding'
+method: CborTypeRegistry
+newEncoderOn: aBinaryWriteStream
+	^(CborTypedEncoder on: aBinaryWriteStream) registry: self; yourself
+%
+
+category: 'encoding'
+method: CborTypeRegistry
+encode: anObject
+	^(self newEncoder encode: anObject) contents
+%
+
+category: 'encoding'
+method: CborTypeRegistry
+encodeCanonical: anObject
+	^(self newEncoder canonical: true; encode: anObject) contents
+%
+
+category: 'decoding'
+method: CborTypeRegistry
+configureDecoder: aCborDecoder
+	"Install converters for all registered types into aCborDecoder. Answer the decoder.
+	 Converters registered on the decoder afterwards override these."
+
+	byTag keysAndValuesDo: [:tagNumber :mapping |
+		aCborDecoder onTag: tagNumber do: [:payload | mapping objectFrom: payload]].
+	byName isEmpty
+		ifFalse: [aCborDecoder onTag: 27 do: [:value | self objectFromNamed: value]].
+	^aCborDecoder
+%
+
+category: 'decoding'
+method: CborTypeRegistry
+newDecoderOn: aBinaryReadStream
+	^self configureDecoder: (CborDecoder on: aBinaryReadStream)
+%
+
+category: 'decoding'
+method: CborTypeRegistry
+newDecoderOnBytes: aByteArray
+	^self configureDecoder: (CborDecoder onBytes: aByteArray)
+%
+
+category: 'decoding'
+method: CborTypeRegistry
+decode: aByteArray
+	"Decode exactly one data item, converting registered tags into objects."
+
+	| decoder result |
+	decoder := self newDecoderOnBytes: aByteArray.
+	result := decoder decode.
+	decoder atEnd ifFalse: [^CborError signal: 'CBOR decode error: trailing bytes after data item'].
+	^result
+%
+
+category: 'decoding'
+method: CborTypeRegistry
+decodeSequence: aByteArray
+	^(self newDecoderOnBytes: aByteArray) decodeAll
+%
+
+category: 'private'
+method: CborTypeRegistry
+objectFromNamed: value
+	"Tag 27 content [typeName, arg1, ...]. Unregistered names are never instantiated;
+	 they come back as a CborTag so they survive a decode/encode round trip."
+
+	| mapping |
+	((value isKindOf: Array) and: [value notEmpty and: [value first isKindOf: CharacterCollection]])
+		ifFalse: [^CborTag tag: 27 value: value].
+	mapping := self mappingForTypeName: value first.
+	mapping isNil ifTrue: [^CborTag tag: 27 value: value].
+	^mapping objectFrom: (value copyFrom: 2 to: value size)
+%
+
+! ------------------- CborTestPoint (test fixture)
+removeallmethods CborTestPoint
+removeallclassmethods CborTestPoint
+
+category: 'instance creation'
+classmethod: CborTestPoint
+x: xNumber y: yNumber
+	^self new setX: xNumber y: yNumber
+%
+
+category: 'cbor'
+classmethod: CborTestPoint
+fromCborPayload: anArray
+	^self x: anArray first y: anArray last
+%
+
+category: 'private'
+method: CborTestPoint
+setX: xNumber y: yNumber
+	x := xNumber.
+	y := yNumber
+%
+
+category: 'accessing'
+method: CborTestPoint
+x
+	^x
+%
+
+category: 'accessing'
+method: CborTestPoint
+y
+	^y
+%
+
+category: 'comparing'
+method: CborTestPoint
+= anObject
+	^(anObject isKindOf: CborTestPoint) and: [x = anObject x and: [y = anObject y]]
+%
+
+category: 'comparing'
+method: CborTestPoint
+hash
+	^x hash bitXor: y hash
+%
+
+category: 'cbor'
+method: CborTestPoint
+cborPayload
+	^Array with: x with: y
+%
+
+! ------------------- CborTypeRegistryTest
+removeallmethods CborTypeRegistryTest
+removeallclassmethods CborTypeRegistryTest
+
+category: 'helpers'
+method: CborTypeRegistryTest
+registry
+	"A fresh registry with CborTestPoint as tag 40001 (selector based)."
+
+	| r |
+	r := CborTypeRegistry new.
+	r register: CborTestPoint tag: 40001.
+	^r
+%
+
+category: 'helpers'
+method: CborTypeRegistryTest
+hexOf: aByteArray
+	^Cbor hexFromBytes: aByteArray
+%
+
+category: 'helpers'
+method: CborTypeRegistryTest
+p: x _: y
+	^CborTestPoint x: x y: y
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testSelectorBasedMapping
+	| r bytes decoded |
+	r := self registry.
+	bytes := r encode: (self p: 1 _: 2).
+	self assert: (self hexOf: bytes) equals: 'd99c41820102'.
+	decoded := r decode: bytes.
+	self assert: decoded class equals: CborTestPoint.
+	self assert: decoded equals: (self p: 1 _: 2)
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testBlockBasedMapping
+	| r bytes decoded |
+	r := CborTypeRegistry new.
+	r register: Association tag: 40010
+		encode: [:assoc | Array with: assoc key with: assoc value]
+		decode: [:pair | pair first -> pair last].
+	bytes := r encode: 'a' -> 1.
+	self assert: (self hexOf: bytes) equals: 'd99c4a82616101'.
+	decoded := r decode: bytes.
+	self assert: (decoded isKindOf: Association).
+	self assert: decoded key equals: 'a'.
+	self assert: decoded value equals: 1
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testNestedObjects
+	| r d decoded |
+	r := self registry.
+	d := Dictionary new.
+	d at: 'line' put: (Array with: (self p: 0 _: 0) with: (self p: 3 _: 4)).
+	d at: 'origin' put: (self p: -1 _: 2.5).
+	decoded := r decode: (r encode: d).
+	self assert: (decoded at: 'line') equals: (Array with: (self p: 0 _: 0) with: (self p: 3 _: 4)).
+	self assert: (decoded at: 'origin') equals: (self p: -1 _: 2.5).
+	self assert: (decoded at: 'origin') class equals: CborTestPoint
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testCanonicalEncodingUsesRegistryForKeys
+	"Map keys are encoded by a nested encoder in canonical mode; it must know the registry."
+
+	| r d bytes decoded |
+	r := self registry.
+	d := Dictionary new.
+	d at: (self p: 1 _: 2) put: 'a'.
+	bytes := r encodeCanonical: d.
+	self assert: (self hexOf: bytes) equals: 'a1d99c418201026161'.
+	decoded := r decode: bytes.
+	self assert: (decoded at: (self p: 1 _: 2)) equals: 'a'
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testNamedTypes
+	| r bytes decoded |
+	r := CborTypeRegistry new.
+	r register: CborTestPoint typeName: 'example.Point'.
+	bytes := r encode: (self p: 1 _: 2).
+	self assert: (self hexOf: bytes) equals: 'd81b836d6578616d706c652e506f696e740102'.
+	decoded := r decode: bytes.
+	self assert: decoded equals: (self p: 1 _: 2)
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testUnregisteredTypeNameIsNotInstantiated
+	| r bytes decoded |
+	r := CborTypeRegistry new.
+	r register: CborTestPoint typeName: 'example.Point'.
+	bytes := Cbor encode: (CborTag tag: 27 value: #('evil.Class' 1)).
+	decoded := r decode: bytes.
+	self assert: decoded equals: (CborTag tag: 27 value: #('evil.Class' 1)).
+	self assert: (r encode: decoded) equals: bytes
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testUnknownTagPassesThrough
+	| r bytes decoded |
+	r := self registry.
+	bytes := Cbor bytesFromHex: 'd99c4b820102'.
+	decoded := r decode: bytes.
+	self assert: decoded equals: (CborTag tag: 40011 value: #(1 2)).
+	self assert: (r encode: decoded) equals: bytes
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testPlainCborIgnoresRegistry
+	| decoded |
+	decoded := Cbor decode: (Cbor bytesFromHex: 'd99c41820102').
+	self assert: decoded equals: (CborTag tag: 40001 value: #(1 2)).
+	self should: [Cbor encode: (self p: 1 _: 2)] raise: CborError
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testDuplicateTagRejected
+	| r |
+	r := self registry.
+	self should: [r register: Association tag: 40001 encode: [:a | 0] decode: [:p | nil]] raise: CborError.
+	self assert: (r mappingForTag: 40001) typeClass equals: CborTestPoint
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testDuplicateTypeNameRejected
+	| r |
+	r := CborTypeRegistry new.
+	r register: CborTestPoint typeName: 'example.Point'.
+	self should: [r register: Association typeName: 'example.Point'] raise: CborError
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testReRegisterReplacesMapping
+	| r |
+	r := self registry.
+	r register: CborTestPoint tag: 40005.
+	self assert: (r mappingForTag: 40001) isNil.
+	self assert: (self hexOf: (r encode: (self p: 1 _: 2))) equals: 'd99c45820102'.
+	r register: CborTestPoint typeName: 'example.Point'.
+	self assert: (r mappingForTag: 40005) isNil.
+	self assert: (r mappingForTypeName: 'example.Point') typeClass equals: CborTestPoint
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testUnregister
+	| r removed |
+	r := self registry.
+	removed := r unregister: CborTestPoint.
+	self assert: removed tag equals: 40001.
+	self assert: r isEmpty.
+	self assert: (r unregister: CborTestPoint) isNil.
+	self should: [r encode: (self p: 1 _: 2)] raise: CborError
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testInvalidRegistrations
+	| r |
+	r := CborTypeRegistry new.
+	self should: [r register: CborTestPoint tag: 27] raise: CborError.
+	self should: [r register: CborTestPoint tag: -1] raise: CborError.
+	self should: [r register: CborTestPoint typeName: ''] raise: CborError.
+	self assert: r isEmpty
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testMappingsListing
+	| r list |
+	r := self registry.
+	r register: Association typeName: 'example.Assoc'
+		encode: [:a | Array with: a key with: a value]
+		decode: [:args | args first -> args last].
+	list := r mappings.
+	self assert: list size equals: 2.
+	self assert: list first tag equals: 40001.
+	self assert: list last typeName equals: 'example.Assoc'
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testDecoderConvertersCanBeOverridden
+	| decoder |
+	decoder := self registry newDecoderOnBytes: (Cbor bytesFromHex: 'd99c41820102').
+	decoder onTag: 40001 do: [:payload | payload size].
+	self assert: decoder decode equals: 2
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testStreamApi
+	| r ws rs decoder |
+	r := self registry.
+	ws := WriteStream on: ByteArray new.
+	(r newEncoderOn: ws) encode: (self p: 1 _: 2); encode: (self p: 3 _: 4).
+	rs := ReadStream on: ws contents.
+	decoder := r newDecoderOn: rs.
+	self assert: decoder decode equals: (self p: 1 _: 2).
+	self assert: decoder decode equals: (self p: 3 _: 4).
+	self assert: decoder atEnd.
+	self assert: (r decodeSequence: ws contents) equals: (Array with: (self p: 1 _: 2) with: (self p: 3 _: 4))
+%
+
+category: 'tests'
+method: CborTypeRegistryTest
+testDefaultRegistryIsShared
+	self assert: CborTypeRegistry default == CborTypeRegistry default
 %

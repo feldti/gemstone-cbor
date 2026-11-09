@@ -9,7 +9,8 @@ Eine Implementierung von **CBOR** (Concise Binary Object Representation, [RFC 89
 - Eingebaute Tags für Datum und Zeit, Dezimalbrüche, rationale Zahlen und Mengen
 - CBOR-Sequenzen (RFC 8742)
 - Robustes Decodieren: Jede fehlerhafte Eingabe löst `CborError` aus, die Verschachtelungstiefe ist begrenzt
-- 37 SUnit-Tests, unter anderem mit den Testvektoren aus RFC 8949, Anhang A
+- Typ-Registry: eigene Klassen zentral auf Tags oder Typnamen abbilden
+- 54 SUnit-Tests, unter anderem mit den Testvektoren aus RFC 8949, Anhang A
 
 ## Installation
 
@@ -171,6 +172,67 @@ Das passende Gegenstück beim Decodieren:
 decoder onTag: 40001 do: [:pair | pair first @ pair last].
 ```
 
+### Typ-Registry: Klassen zentral auf Tags abbilden
+
+`cborEncodeOn:` und `onTag:do:` verteilen das Wissen, welche Klasse zu welchem Tag gehört, auf Klasse und Aufrufer. Mit `CborTypeRegistry` steht diese Zuordnung an einer Stelle. Die Registry liefert Encoder und Decoder, die beide Richtungen kennen.
+
+**Registrierung über Selektoren** (für eigene Klassen): Instanzen implementieren `cborPayload`, die Klasse implementiert `fromCborPayload:`.
+
+```smalltalk
+Customer >> cborPayload
+	| m |
+	m := Dictionary new.
+	m at: 1 put: name; at: 2 put: id.
+	addresses isEmpty ifFalse: [m at: 3 put: addresses asArray].
+	^m
+
+Customer class >> fromCborPayload: aDictionary
+	^self name: (aDictionary at: 1) id: (aDictionary at: 2)
+		addresses: (aDictionary at: 3 ifAbsent: [#()])
+
+registry := CborTypeRegistry new.
+registry register: Customer tag: 40002.
+registry register: Address tag: 40003.
+```
+
+**Registrierung über Blöcke** (für fremde Klassen, die man nicht ändern will):
+
+```smalltalk
+registry register: Point tag: 40001
+	encode: [:p | Array with: p x with: p y]
+	decode: [:a | a first @ a last].
+```
+
+**Benutzen:**
+
+```smalltalk
+bytes := registry encode: aCustomer.          "auch registry encodeCanonical:"
+obj   := registry decode: bytes.              "=> ein Customer, Adressen als Address-Objekte"
+
+encoder := registry newEncoderOn: aStream.    "für Streams"
+decoder := registry newDecoderOn: aStream.
+decoder unicodeStrings: true.                 "alle Decoder-Optionen bleiben verfügbar"
+```
+
+**Typnamen statt Tag-Nummern** (Tag 27, `[typeName, arg1, ...]`): `cborPayload` liefert die Argumentliste, `fromCborPayload:` bekommt sie als Array.
+
+```smalltalk
+registry register: CborTestPoint typeName: 'example.Point'.
+Cbor hexFromBytes: (registry encode: (CborTestPoint x: 1 y: 2)).
+"=> 'd81b836d6578616d706c652e506f696e740102'  = 27(['example.Point', 1, 2])"
+```
+
+Beim Decodieren werden nur registrierte Typnamen instanziiert. Die Registry wirkt damit als Whitelist. Unbekannte Namen kommen als `CborTag` zurück, es wird nie eine Klasse per Reflection aus den Daten erzeugt.
+
+**Regeln:**
+- **Klassen-Lookup:** Gesucht wird nach der exakten Klasse. Unterklassen müssen selbst registriert werden, sonst fällt der Encoder auf die eingebaute Abbildung zurück.
+- **Vorrang:** Registrierte Klassen haben Vorrang vor der eingebauten Typbehandlung. Damit lassen sich auch Standardklassen anders abbilden.
+- **Eindeutigkeit:** Eine Tag-Nummer oder ein Typname gehört genau zu einer Klasse. Doppelte Vergabe löst `CborError` aus. Registriert man dieselbe Klasse erneut, ersetzt das die alte Zuordnung. Tag 27 ist für Typnamen reserviert.
+- **Unbekannte Tags** bleiben `CborTag` und werden unverändert wieder geschrieben.
+- **Überschreiben:** Mit `onTag:do:` auf einem Decoder der Registry lassen sich einzelne Umwandlungen überschreiben.
+- **Ohne Registry:** `Cbor encode:` und `Cbor decode:` bleiben bewusst ohne Registry.
+- **Gemeinsame Default-Registry:** `CborTypeRegistry default` liefert eine gemeinsame, persistente Instanz. Dort am besten nur über Selektoren registrieren, denn Blöcke werden sonst mit dem Stone persistiert. Gleichzeitige Änderungen aus mehreren Sessions führen zu Commit-Konflikten. Die Registry daher beim Deployment füllen, nicht zur Laufzeit.
+
 ### Streaming und Werte unbestimmter Länge
 
 Encoder und Decoder arbeiten auf beliebigen binären Streams:
@@ -248,13 +310,18 @@ Alle Fehler beim Encodieren und Decodieren sind Instanzen von `CborError` (Unter
 | `CborDecoder` | liest CBOR von einem binären ReadStream; Optionen siehe oben, eigene Tags mit `onTag:do:` |
 | `CborTag` | Wert mit Tag (`tag`, `value`) |
 | `CborSimpleValue` | Simple Value (`value`); `CborSimpleValue undefined` für `undefined` |
+| `CborTypeRegistry` | zentrale Zuordnung Klasse ↔ Tag bzw. Typname; liefert passende Encoder und Decoder |
+| `CborTypeMapping` | eine einzelne Zuordnung in der Registry |
+| `CborTypedEncoder` | Encoder, der vor der eingebauten Abbildung die Registry fragt |
 | `CborError` | Fehlerklasse |
-| `CborTest` | SUnit-Tests |
+| `CborTest`, `CborTypeRegistryTest` | SUnit-Tests |
+| `CborTestPoint` | Beispielklasse für die Tests |
 
 ## Tests
 
 ```smalltalk
-CborTest suite run.   "37 Tests, alle grün"
+CborTest suite run.               "37 Tests, alle grün"
+CborTypeRegistryTest suite run.   "17 Tests, alle grün"
 ```
 
 ## Hinweise
