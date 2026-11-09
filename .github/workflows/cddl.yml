@@ -1,0 +1,50 @@
+name: CDDL validation
+
+# Checks the shared data contract in spec/:
+#  1. the generated test vectors are up to date with spec/generate_vectors.py
+#  2. every vector agrees with spec/types.cddl (valid ones pass, invalid ones fail),
+#     using the CDDL reference implementation (Ruby gem "cddl")
+
+on:
+  push:
+    paths:
+      - "spec/**"
+      - "src/CborVectorTest-vectors.gs"
+      - ".github/workflows/cddl.yml"
+  pull_request:
+    paths:
+      - "spec/**"
+      - "src/CborVectorTest-vectors.gs"
+      - ".github/workflows/cddl.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install CDDL tool
+        run: gem install --no-document cddl -v 0.12.14
+
+      - name: Check that generated vectors are up to date
+        run: |
+          python3 spec/generate_vectors.py
+          if ! git diff --exit-code -- spec/test-vectors.json src/CborVectorTest-vectors.gs; then
+            echo "::error::Generated test vectors are out of date. Run 'python3 spec/generate_vectors.py' and commit the result."
+            exit 1
+          fi
+
+      - name: Validate vectors against spec/types.cddl
+        run: python3 spec/validate_vectors.py

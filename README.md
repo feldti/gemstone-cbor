@@ -300,6 +300,10 @@ python3 spec/validate_vectors.py     # => 18/18 vectors agree with spec/types.cd
 
 Das Skript sucht `cddl` in `$CDDL`, im `PATH` und im RubyGems-Benutzerverzeichnis. Es endet mit Status 1, wenn ein Vektor nicht zum Schema passt, und eignet sich damit auch für CI.
 
+Auf GitHub übernimmt das die Action `.github/workflows/cddl.yml`. Sie läuft bei jeder Änderung an `spec/` oder an den generierten Vektoren und prüft zweierlei:
+1. Die eingecheckten Vektoren müssen dem entsprechen, was `generate_vectors.py` erzeugt. Sonst fehlt ein `python3 spec/generate_vectors.py` vor dem Commit.
+2. `validate_vectors.py` muss für alle Vektoren mit dem Schema übereinstimmen.
+
 ### Streaming und Werte unbestimmter Länge
 
 Encoder und Decoder arbeiten auf beliebigen binären Streams:
