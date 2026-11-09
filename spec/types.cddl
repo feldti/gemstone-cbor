@@ -1,0 +1,55 @@
+; ------------------------------------------------------------------
+; types.cddl - shared CBOR data contract (RFC 8610 CDDL)
+;
+; This file is the single source of truth for every implementation
+; (GemStone/Smalltalk, Python, JavaScript, Go, Rust, ...).
+; Changing it means changing the wire format: review accordingly.
+;
+; Tag numbers (First Come First Served range, not registered with IANA;
+; register them before exchanging data outside this project):
+;
+;   40001  point
+;   40002  customer
+;   40003  address
+;
+; Encoding rules for all implementations:
+;   - Preferred serialization (shortest form for integers, lengths and floats).
+;   - Maps with integer keys; encoders MUST omit absent optional fields
+;     (never write null for them).
+;   - For deterministic output (hashes, signatures, test vectors) use
+;     RFC 8949 section 4.2.1 core deterministic encoding (keys sorted bytewise).
+;   - Decoders MUST ignore unknown integer keys in maps (forward compatibility)
+;     and MUST keep unknown tags as generic tagged values.
+;   - Versioning: add only optional keys; an incompatible change gets a new tag.
+; ------------------------------------------------------------------
+
+; Top level: one message, or a list of messages
+start    = message / messages
+messages = [* message]
+message  = point / customer / address
+
+; A point with integer coordinates: 40001([x, y])
+point = #6.40001([
+    x: int,
+    y: int,
+])
+
+; Known keys use "^=>" (cut): a known key with a wrong value makes the map
+; invalid instead of being swallowed by the "* uint => any" extension entry.
+
+; A customer: 40002({1: name, 2: id, ?3: addresses, ?4: createdAt})
+customer = #6.40002({
+    1 ^=> tstr .size (1..200),       ; name, 1..200 bytes
+    2 ^=> uint,                      ; id
+  ? 3 ^=> [+ address],               ; addresses, at least one if present
+  ? 4 ^=> #6.1(int),                 ; created at, POSIX seconds (tag 1)
+    * uint => any,                   ; future extensions (ignored by old readers)
+})
+
+; An address: 40003({1: street, 2: city, ?3: zip})
+address = #6.40003({
+    1 ^=> tstr,                      ; street
+    2 ^=> tstr,                      ; city
+  ? 3 ^=> tstr .size 5,              ; zip code, exactly 5 bytes
+    * uint => any,                   ; future extensions
+})

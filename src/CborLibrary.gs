@@ -135,6 +135,36 @@ TestCase subclass: 'CborTypeRegistryTest'
 	options: #()
 %
 
+run
+Object subclass: 'CborTestAddress'
+	instVarNames: #( street city zip )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+Object subclass: 'CborTestCustomer'
+	instVarNames: #( name id addresses createdAt )
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
+run
+TestCase subclass: 'CborVectorTest'
+	instVarNames: #()
+	classVars: #()
+	classInstVars: #()
+	poolDictionaries: #()
+	inDictionary: CborLibrary
+	options: #()
+%
+
 ! ------------------- CborTag
 removeallmethods CborTag
 removeallclassmethods CborTag
@@ -2243,6 +2273,9 @@ x: xNumber y: yNumber
 category: 'cbor'
 classmethod: CborTestPoint
 fromCborPayload: anArray
+	((anArray isKindOf: Array) and: [anArray size = 2
+		and: [anArray first isNumber and: [anArray last isNumber]]])
+		ifFalse: [^CborError signal: 'invalid point payload: ', anArray printString].
 	^self x: anArray first y: anArray last
 %
 
@@ -2507,4 +2540,261 @@ category: 'tests'
 method: CborTypeRegistryTest
 testDefaultRegistryIsShared
 	self assert: CborTypeRegistry default == CborTypeRegistry default
+%
+
+! ------------------- CborTestAddress (test fixture, see spec/types.cddl)
+removeallmethods CborTestAddress
+removeallclassmethods CborTestAddress
+
+category: 'instance creation'
+classmethod: CborTestAddress
+street: streetString city: cityString zip: zipStringOrNil
+	^self new setStreet: streetString city: cityString zip: zipStringOrNil
+%
+
+category: 'cbor'
+classmethod: CborTestAddress
+fromCborPayload: aMap
+	"Payload per spec/types.cddl: {1: street, 2: city, ?3: zip (5 bytes)}. Unknown keys are ignored."
+
+	| aStreet aCity aZip |
+	(aMap isKindOf: AbstractDictionary) ifFalse: [^CborError signal: 'address payload must be a map'].
+	aStreet := aMap at: 1 ifAbsent: [nil].
+	aCity := aMap at: 2 ifAbsent: [nil].
+	aZip := aMap at: 3 ifAbsent: [nil].
+	((aStreet isKindOf: CharacterCollection) and: [aCity isKindOf: CharacterCollection])
+		ifFalse: [^CborError signal: 'address requires text keys 1 (street) and 2 (city)'].
+	(aZip isNil or: [(aZip isKindOf: CharacterCollection) and: [aZip encodeAsUTF8 size = 5]])
+		ifFalse: [^CborError signal: 'address zip must be a 5-byte text string'].
+	^self street: aStreet city: aCity zip: aZip
+%
+
+category: 'private'
+method: CborTestAddress
+setStreet: streetString city: cityString zip: zipStringOrNil
+	street := streetString.
+	city := cityString.
+	zip := zipStringOrNil
+%
+
+category: 'accessing'
+method: CborTestAddress
+street
+	^street
+%
+
+category: 'accessing'
+method: CborTestAddress
+city
+	^city
+%
+
+category: 'accessing'
+method: CborTestAddress
+zip
+	^zip
+%
+
+category: 'cbor'
+method: CborTestAddress
+cborPayload
+	| m |
+	m := Dictionary new.
+	m at: 1 put: street; at: 2 put: city.
+	zip isNil ifFalse: [m at: 3 put: zip].
+	^m
+%
+
+! ------------------- CborTestCustomer (test fixture, see spec/types.cddl)
+removeallmethods CborTestCustomer
+removeallclassmethods CborTestCustomer
+
+category: 'instance creation'
+classmethod: CborTestCustomer
+name: aString id: anInteger addresses: anArray createdAt: aDateAndTimeOrNil
+	^self new setName: aString id: anInteger addresses: anArray createdAt: aDateAndTimeOrNil
+%
+
+category: 'cbor'
+classmethod: CborTestCustomer
+fromCborPayload: aMap
+	"Payload per spec/types.cddl: {1: name, 2: id, ?3: [+ address], ?4: 1(int)}.
+	 Unknown keys are ignored (forward compatibility)."
+
+	| aName anId someAddresses aCreatedAt |
+	(aMap isKindOf: AbstractDictionary) ifFalse: [^CborError signal: 'customer payload must be a map'].
+	aName := aMap at: 1 ifAbsent: [nil].
+	anId := aMap at: 2 ifAbsent: [nil].
+	someAddresses := aMap at: 3 ifAbsent: [nil].
+	aCreatedAt := aMap at: 4 ifAbsent: [nil].
+	((aName isKindOf: CharacterCollection) and: [aName encodeAsUTF8 size between: 1 and: 200])
+		ifFalse: [^CborError signal: 'customer name must be a text string of 1..200 bytes'].
+	(anId isInteger and: [anId >= 0])
+		ifFalse: [^CborError signal: 'customer id must be an unsigned integer'].
+	(someAddresses isNil or: [(someAddresses isKindOf: Array) and: [someAddresses notEmpty
+		and: [someAddresses allSatisfy: [:each | each isKindOf: CborTestAddress]]]])
+		ifFalse: [^CborError signal: 'customer addresses must be a non-empty array of addresses'].
+	(aCreatedAt isNil or: [aCreatedAt isKindOf: DateAndTimeANSI])
+		ifFalse: [^CborError signal: 'customer createdAt must be a tag 1 date/time'].
+	^self name: aName id: anId addresses: (someAddresses ifNil: [#()]) createdAt: aCreatedAt
+%
+
+category: 'private'
+method: CborTestCustomer
+setName: aString id: anInteger addresses: anArray createdAt: aDateAndTimeOrNil
+	name := aString.
+	id := anInteger.
+	addresses := anArray.
+	createdAt := aDateAndTimeOrNil
+%
+
+category: 'accessing'
+method: CborTestCustomer
+name
+	^name
+%
+
+category: 'accessing'
+method: CborTestCustomer
+id
+	^id
+%
+
+category: 'accessing'
+method: CborTestCustomer
+addresses
+	^addresses
+%
+
+category: 'accessing'
+method: CborTestCustomer
+createdAt
+	^createdAt
+%
+
+category: 'cbor'
+method: CborTestCustomer
+cborPayload
+	"Optional fields are omitted when absent, as required by spec/types.cddl."
+
+	| m |
+	m := Dictionary new.
+	m at: 1 put: name; at: 2 put: id.
+	addresses isEmpty ifFalse: [m at: 3 put: addresses asArray].
+	createdAt isNil ifFalse: [m at: 4 put: createdAt].
+	^m
+%
+
+! ------------------- CborVectorTest (the #vectors method is generated: CborVectorTest-vectors.gs)
+removeallmethods CborVectorTest
+removeallclassmethods CborVectorTest
+
+category: 'helpers'
+method: CborVectorTest
+registry
+	"Tag assignments from spec/types.cddl."
+
+	| r |
+	r := CborTypeRegistry new.
+	r register: CborTestPoint tag: 40001.
+	r register: CborTestCustomer tag: 40002.
+	r register: CborTestAddress tag: 40003.
+	^r
+%
+
+category: 'helpers'
+method: CborVectorTest
+classForRule: ruleName
+	ruleName = 'point' ifTrue: [^CborTestPoint].
+	ruleName = 'customer' ifTrue: [^CborTestCustomer].
+	ruleName = 'address' ifTrue: [^CborTestAddress].
+	ruleName = 'messages' ifTrue: [^Array].
+	^self error: 'unknown CDDL rule ', ruleName
+%
+
+category: 'helpers'
+method: CborVectorTest
+vectorsWhere: aBlock
+	"Answer vectors as Arrays {name. rule. valid. roundtrip. bytes} that satisfy aBlock."
+
+	^(self vectors
+		collect: [:v | Array with: (v at: 1) with: (v at: 2) with: (v at: 3) with: (v at: 4)
+			with: (Cbor bytesFromHex: (v at: 5))])
+		select: aBlock
+%
+
+category: 'helpers'
+method: CborVectorTest
+isDomainObject: anObject
+	^(anObject isKindOf: CborTestPoint)
+		or: [(anObject isKindOf: CborTestCustomer) or: [anObject isKindOf: CborTestAddress]]
+%
+
+category: 'tests'
+method: CborVectorTest
+testVectorsArePresent
+	self assert: (self vectorsWhere: [:v | v at: 3]) size >= 10.
+	self assert: (self vectorsWhere: [:v | (v at: 3) not]) size >= 5
+%
+
+category: 'tests'
+method: CborVectorTest
+testValidVectorsDecodeToDomainObjects
+	| r |
+	r := self registry.
+	(self vectorsWhere: [:v | v at: 3]) do: [:v | | decoded |
+		decoded := r decode: (v at: 5).
+		self assert: (decoded isKindOf: (self classForRule: (v at: 2)))
+			description: (v at: 1), ': wrong class ', decoded class name.
+		(v at: 2) = 'messages'
+			ifTrue: [decoded do: [:each |
+				self assert: (self isDomainObject: each) description: (v at: 1), ': element not converted']]]
+%
+
+category: 'tests'
+method: CborVectorTest
+testRoundTripVectors
+	"Decoding to domain objects and re-encoding deterministically reproduces the bytes."
+
+	| r |
+	r := self registry.
+	(self vectorsWhere: [:v | v at: 4]) do: [:v |
+		self
+			assert: (Cbor hexFromBytes: (r encodeCanonical: (r decode: (v at: 5))))
+			equals: (Cbor hexFromBytes: (v at: 5))]
+%
+
+category: 'tests'
+method: CborVectorTest
+testInvalidVectorsAreRejected
+	"An invalid vector must either signal CborError or not decode to the rule's class."
+
+	| r |
+	r := self registry.
+	(self vectorsWhere: [:v | (v at: 3) not]) do: [:v | | result |
+		result := [r decode: (v at: 5)] on: CborError do: [:ex | ex return: #rejected].
+		self assert: (result == #rejected or: [(result isKindOf: (self classForRule: (v at: 2))) not])
+			description: (v at: 1), ' was accepted']
+%
+
+category: 'tests'
+method: CborVectorTest
+testUnknownKeysAreIgnored
+	| customer |
+	customer := self registry decode: ((self vectorsWhere: [:v | (v at: 1) = 'customer-extension']) first at: 5).
+	self assert: customer name equals: 'Ada'.
+	self assert: customer id equals: 42
+%
+
+category: 'tests'
+method: CborVectorTest
+testFullCustomerContent
+	| customer |
+	customer := self registry decode: ((self vectorsWhere: [:v | (v at: 1) = 'customer-full']) first at: 5).
+	self assert: customer name equals: 'Grace Hopper'.
+	self assert: customer id equals: 1906.
+	self assert: customer addresses size equals: 2.
+	self assert: customer addresses first zip equals: '10115'.
+	self assert: customer addresses last zip isNil.
+	self assert: customer createdAt asPosixSeconds equals: 1363896240
 %

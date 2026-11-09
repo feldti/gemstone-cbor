@@ -10,7 +10,8 @@ Eine Implementierung von **CBOR** (Concise Binary Object Representation, [RFC 89
 - CBOR-Sequenzen (RFC 8742)
 - Robustes Decodieren: Jede fehlerhafte Eingabe löst `CborError` aus, die Verschachtelungstiefe ist begrenzt
 - Typ-Registry: eigene Klassen zentral auf Tags oder Typnamen abbilden
-- 54 SUnit-Tests, unter anderem mit den Testvektoren aus RFC 8949, Anhang A
+- Gemeinsamer Datenvertrag für mehrere Sprachen: CDDL-Schema und sprachneutrale Testvektoren in `spec/`
+- 60 SUnit-Tests, unter anderem mit den Testvektoren aus RFC 8949, Anhang A
 
 ## Installation
 
@@ -19,8 +20,11 @@ Die Bibliothek liegt als Topaz-Fileout in `src/CborLibrary.gs`. Sie legt das Sym
 ```
 topaz 1> login
 topaz 1> input src/CborLibrary.gs
+topaz 1> input src/CborVectorTest-vectors.gs
 topaz 1> commit
 ```
+
+`CborVectorTest-vectors.gs` enthält nur die generierten Testvektoren für `CborVectorTest` (siehe unten).
 
 Die Datei kann mehrfach geladen werden. Vor dem Neuladen werden die vorhandenen Methoden der Klassen entfernt.
 
@@ -233,6 +237,40 @@ Beim Decodieren werden nur registrierte Typnamen instanziiert. Die Registry wirk
 - **Ohne Registry:** `Cbor encode:` und `Cbor decode:` bleiben bewusst ohne Registry.
 - **Gemeinsame Default-Registry:** `CborTypeRegistry default` liefert eine gemeinsame, persistente Instanz. Dort am besten nur über Selektoren registrieren, denn Blöcke werden sonst mit dem Stone persistiert. Gleichzeitige Änderungen aus mehreren Sessions führen zu Commit-Konflikten. Die Registry daher beim Deployment füllen, nicht zur Laufzeit.
 
+### Gemeinsamer Datenvertrag für mehrere Sprachen (`spec/`)
+
+Wenn auch andere Sprachen die Daten lesen oder schreiben, gilt als Vertrag nicht der Code, sondern das Verzeichnis `spec/`:
+
+| Datei | Inhalt |
+|---|---|
+| `spec/types.cddl` | Schema in CDDL (RFC 8610): Tag-Nummern, Felder, Pflicht/optional, Regeln für Erweiterungen |
+| `spec/test-vectors.json` | gemeinsame Testvektoren: Hex-Bytes, Diagnostic Notation, CDDL-Regel, gültig/ungültig, Roundtrip ja/nein |
+| `spec/generate_vectors.py` | erzeugt die Vektoren mit einem eigenen, abhängigkeitsfreien CBOR-Encoder |
+
+Die Beispieltypen dort sind `point` (Tag 40001), `customer` (40002) und `address` (40003). In GemStone bilden die Testklassen `CborTestPoint`, `CborTestCustomer` und `CborTestAddress` sie ab.
+
+**Vektoren erzeugen** (nach jeder Änderung an Schema oder Vektorliste):
+
+```
+python3 spec/generate_vectors.py
+```
+
+Das Skript schreibt `spec/test-vectors.json` und `src/CborVectorTest-vectors.gs`. Beide Dateien nicht von Hand ändern.
+
+**Bedeutung der Felder** in `test-vectors.json`:
+- `valid`: Das Element entspricht der CDDL-Regel `rule`.
+- `roundtrip`: Decodieren in Fachobjekte und deterministisches Encodieren ergibt exakt `hex`. Bei `customer-extension` ist das bewusst `false`, weil Leser unbekannte Schlüssel ignorieren und sie dabei verloren gehen.
+
+**Was jede Implementierung testen sollte:**
+1. Gültige Vektoren decodieren zu den richtigen Fachobjekten.
+2. Vektoren mit `roundtrip: true` ergeben nach Decodieren und Encodieren wieder dieselben Bytes.
+3. Ungültige Vektoren werden abgelehnt, entweder mit einem Fehler oder zumindest nicht als Fachobjekt der Regel.
+4. Unbekannte Schlüssel werden ignoriert.
+
+In GemStone erledigt das `CborVectorTest`. Für Python, JavaScript & Co. liest die jeweilige Testsuite `spec/test-vectors.json` ein.
+
+**CDDL-Validierung:** Mit dem Referenzwerkzeug (Ruby-Gem `cddl`) lässt sich das Schema gegen die Vektoren prüfen, z.B. `cddl spec/types.cddl validate <datei.cbor>`. Erwartet wird: gültige Vektoren bestehen, ungültige fallen durch. Diese Prüfung ist im Repository noch nicht automatisiert.
+
 ### Streaming und Werte unbestimmter Länge
 
 Encoder und Decoder arbeiten auf beliebigen binären Streams:
@@ -314,14 +352,15 @@ Alle Fehler beim Encodieren und Decodieren sind Instanzen von `CborError` (Unter
 | `CborTypeMapping` | eine einzelne Zuordnung in der Registry |
 | `CborTypedEncoder` | Encoder, der vor der eingebauten Abbildung die Registry fragt |
 | `CborError` | Fehlerklasse |
-| `CborTest`, `CborTypeRegistryTest` | SUnit-Tests |
-| `CborTestPoint` | Beispielklasse für die Tests |
+| `CborTest`, `CborTypeRegistryTest`, `CborVectorTest` | SUnit-Tests |
+| `CborTestPoint`, `CborTestCustomer`, `CborTestAddress` | Beispielklassen für die Tests, abgebildet nach `spec/types.cddl` |
 
 ## Tests
 
 ```smalltalk
 CborTest suite run.               "37 Tests, alle grün"
 CborTypeRegistryTest suite run.   "17 Tests, alle grün"
+CborVectorTest suite run.         " 6 Tests, alle grün: prüft alle 18 gemeinsamen Testvektoren"
 ```
 
 ## Hinweise
