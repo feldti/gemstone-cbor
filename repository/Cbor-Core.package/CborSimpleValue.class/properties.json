@@ -1,0 +1,15 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [
+		"Undefined"
+	],
+	"commentStamp": "",
+	"instvars": [
+		"value"
+	],
+	"name": "CborSimpleValue",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

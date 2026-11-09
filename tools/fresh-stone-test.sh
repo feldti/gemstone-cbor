@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Load the CBOR fileouts into a brand-new stone (copy of the product's empty
-# extent0.dbf, kernel classes only) and run all test suites.
+# Load the CBOR library into a brand-new stone and run all test suites.
 #
 # Usage:
 #   tools/fresh-stone-test.sh <GemStone product dir> [keyfile] [work dir]
 #
-# Example:
+# Modes (environment variable LOADER):
+#   LOADER=topaz     (default) copy of the empty extent0.dbf (kernel classes only),
+#                    load the Topaz fileouts in src/
+#   LOADER=metacello copy of extent0.seaside.dbf (GLASS with Metacello + FileTree),
+#                    load BaselineOfCbor from the FileTree repository in repository/
+#
+# Examples:
 #   tools/fresh-stone-test.sh ~/Documents/GemStone/GemStone64Bit3.7.5-x86_64.Linux
+#   LOADER=metacello tools/fresh-stone-test.sh ~/Documents/GemStone/GemStone64Bit3.7.5-x86_64.Linux
 #
 # The stone runs isolated (own GEMSTONE_GLOBAL_DIR, own name "cborfresh") so it
 # does not interfere with other stones. It is stopped at the end; the work dir
@@ -20,9 +26,15 @@ KEYFILE=${2:-$PRODUCT/sys/community.starter.key}
 WORK=${3:-$(mktemp -d -t cborfresh.XXXXXX)}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 STONE=cborfresh
+LOADER=${LOADER:-topaz}
+case "$LOADER" in
+  topaz)     EXTENT=extent0.dbf ;;
+  metacello) EXTENT=extent0.seaside.dbf ;;
+  *) echo "unknown LOADER '$LOADER' (topaz|metacello)" >&2; exit 2 ;;
+esac
 
 mkdir -p "$WORK/data" "$WORK/log" "$WORK/global/locks" "$WORK/global/log"
-cp "$PRODUCT/bin/extent0.dbf" "$WORK/data/extent0.dbf"
+cp "$PRODUCT/bin/$EXTENT" "$WORK/data/extent0.dbf"
 chmod u+w "$WORK/data/extent0.dbf"
 rm -f "$WORK"/data/tranlog*.dbf
 
@@ -54,8 +66,19 @@ topaz -l -q > "$WORK/log/topaz.out" 2>&1 <<EOF
 set gemstone $STONE user DataCurator pass swordfish
 login
 output push $WORK/log/load.out only
+$(if [ "$LOADER" = metacello ]; then cat <<MC
+run
+Metacello new
+	baseline: 'Cbor';
+	repository: 'filetree://$REPO/repository';
+	load.
+%
+MC
+else cat <<GS
 input $REPO/src/CborLibrary.gs
 input $REPO/src/CborVectorTest-vectors.gs
+GS
+fi)
 output pop
 commit
 run

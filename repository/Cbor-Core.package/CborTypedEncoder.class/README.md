@@ -1,0 +1,1 @@
+Encoder that consults a CborTypeRegistry before the built-in type mapping.

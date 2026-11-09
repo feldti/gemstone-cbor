@@ -1,0 +1,1 @@
+Test fixture: point, tag 40001 in spec/types.cddl.

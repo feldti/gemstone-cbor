@@ -1,0 +1,1 @@
+Writes CBOR to a binary write stream.

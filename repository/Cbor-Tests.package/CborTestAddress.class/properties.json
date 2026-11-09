@@ -1,0 +1,15 @@
+{
+	"category": "Cbor-Tests",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"street",
+		"city",
+		"zip"
+	],
+	"name": "CborTestAddress",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

@@ -1,0 +1,17 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"typeClass",
+		"tag",
+		"typeName",
+		"encodeBlock",
+		"decodeBlock"
+	],
+	"name": "CborTypeMapping",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

@@ -1,0 +1,16 @@
+{
+	"category": "Cbor-Tests",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"name",
+		"id",
+		"addresses",
+		"createdAt"
+	],
+	"name": "CborTestCustomer",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

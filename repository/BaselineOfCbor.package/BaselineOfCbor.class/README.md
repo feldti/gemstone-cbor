@@ -1,0 +1,1 @@
+Metacello baseline for the CBOR library.

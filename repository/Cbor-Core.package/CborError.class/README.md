@@ -1,0 +1,1 @@
+Signalled for every encoding or decoding problem.

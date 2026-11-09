@@ -1,0 +1,17 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [
+		"Default"
+	],
+	"commentStamp": "",
+	"instvars": [
+		"byClass",
+		"byTag",
+		"byName"
+	],
+	"name": "CborTypeRegistry",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

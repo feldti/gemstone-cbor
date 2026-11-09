@@ -1,0 +1,1 @@
+A tagged CBOR data item (major type 6) that has no special Smalltalk mapping.

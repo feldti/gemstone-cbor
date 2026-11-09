@@ -1,0 +1,43 @@
+name: Monticello repository up to date
+
+# repository/ (Monticello FileTree packages) is generated from the Topaz fileouts in src/.
+# Fails if someone changed src/ without regenerating, or edited repository/ by hand.
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "repository/**"
+      - "tools/fileout_to_filetree.py"
+      - ".github/workflows/filetree.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "repository/**"
+      - "tools/fileout_to_filetree.py"
+      - ".github/workflows/filetree.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate repository/ from the fileouts
+        run: python3 tools/fileout_to_filetree.py
+
+      - name: Check for differences
+        run: |
+          if [ -n "$(git status --porcelain -- repository)" ]; then
+            git status --porcelain -- repository
+            echo "::error::repository/ is out of date. Run 'python3 tools/fileout_to_filetree.py' and commit the result."
+            exit 1
+          fi

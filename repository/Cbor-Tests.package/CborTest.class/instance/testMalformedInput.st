@@ -1,0 +1,23 @@
+tests - errors
+testMalformedInput
+	self assertDecodeError: ''.
+	self assertDecodeError: '18'.
+	self assertDecodeError: '1a0000'.
+	self assertDecodeError: '4401'.
+	self assertDecodeError: '6261'.
+	self assertDecodeError: '8301'.
+	self assertDecodeError: 'a10a'.
+	self assertDecodeError: '1c'.
+	self assertDecodeError: 'fc'.
+	self assertDecodeError: 'ff'.
+	self assertDecodeError: '9f01'.
+	self assertDecodeError: '81ff'.
+	self assertDecodeError: '1f'.
+	self assertDecodeError: 'df00'.
+	self assertDecodeError: '5f01ff'.
+	self assertDecodeError: '5f6161ff'.
+	self assertDecodeError: '7f5f4100ffff'.
+	self assertDecodeError: 'f800'.
+	self assertDecodeError: '62c328'.
+	self assertDecodeError: '0101'.
+	self assertDecodeError: '5bffffffffffffffff01'

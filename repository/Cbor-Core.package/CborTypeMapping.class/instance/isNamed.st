@@ -1,0 +1,3 @@
+testing
+isNamed
+	^typeName notNil

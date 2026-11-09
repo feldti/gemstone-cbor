@@ -1,0 +1,1 @@
+Tests for encoding and decoding, including the RFC 8949 Appendix A vectors.

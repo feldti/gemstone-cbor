@@ -1,0 +1,11 @@
+{
+	"category": "BaselineOfCbor",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [],
+	"name": "BaselineOfCbor",
+	"pools": [],
+	"super": "BaselineOf",
+	"type": "normal"
+}

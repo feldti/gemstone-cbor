@@ -1,0 +1,1 @@
+Test fixture: address, tag 40003 in spec/types.cddl.

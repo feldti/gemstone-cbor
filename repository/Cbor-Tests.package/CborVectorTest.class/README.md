@@ -1,0 +1,1 @@
+Runs the shared cross-language test vectors from spec/test-vectors.json.

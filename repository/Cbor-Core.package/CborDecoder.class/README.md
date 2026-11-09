@@ -1,0 +1,1 @@
+Reads CBOR from a binary read stream.

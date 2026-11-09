@@ -1,0 +1,11 @@
+{
+	"category": "Cbor-Tests",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [],
+	"name": "CborTypeRegistryTest",
+	"pools": [],
+	"super": "TestCase",
+	"type": "normal"
+}

@@ -15,7 +15,38 @@ Eine Implementierung von **CBOR** (Concise Binary Object Representation, [RFC 89
 
 ## Installation
 
-Die Bibliothek liegt als Topaz-Fileout in `src/CborLibrary.gs`. Sie legt das Symbol-Dictionary `CborLibrary` in der Symbol-Liste des aktuellen Benutzers an, falls es noch nicht existiert, und installiert die Klassen dort.
+Es gibt zwei gleichwertige Wege. Beide enthalten denselben Code.
+
+### Mit Metacello (Monticello-Pakete)
+
+Für Images mit GLASS/GsDevKit, also mit Metacello und FileTree, z.B. aus `extent0.seaside.dbf`:
+
+```smalltalk
+Metacello new
+	baseline: 'Cbor';
+	repository: 'github://feldti/gemstone-cbor:main/repository';
+	load.
+```
+
+Für einen lokalen Checkout lautet das Repository `'filetree:///pfad/zu/gemstone-cbor/repository'`. Getestet ist bisher nur dieser lokale Weg. Das direkte Laden über `github://` setzt voraus, dass der Stone GitHub erreicht.
+
+| Paket | Inhalt |
+|---|---|
+| `Cbor-Core` | die Bibliothek |
+| `Cbor-Tests` | SUnit-Tests und Beispielklassen (benötigt `Cbor-Core`) |
+
+Gruppen der `BaselineOfCbor`:
+- `default`: alles
+- `Core`: nur die Bibliothek
+- `Tests`: nur die Tests
+
+Ohne Tests: `load: 'Core'`.
+
+Monticello legt die Klassen in das Standard-Dictionary des Benutzers (üblicherweise `UserGlobals`), nicht in `CborLibrary`.
+
+### Mit Topaz (Fileout)
+
+Für jedes Image, auch ohne Monticello. Die Datei legt das Symbol-Dictionary `CborLibrary` in der Symbol-Liste des aktuellen Benutzers an, falls es noch nicht existiert, und installiert die Klassen dort.
 
 ```
 topaz 1> login
@@ -26,11 +57,29 @@ topaz 1> commit
 
 `CborVectorTest-vectors.gs` enthält nur die generierten Testvektoren für `CborVectorTest` (siehe unten).
 
-Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Seaside oder Rowan. Getestet ist das mit GemStone 3.7.5 (Entwicklungs-Image und frischer Stone aus dem leeren `extent0.dbf`) sowie 3.7.6 und 4.0.0.a5 (jeweils frischer Stone).
+### Woher das Monticello-Repository kommt
+
+Die Topaz-Fileouts in `src/` sind die Quelle. `repository/` wird daraus erzeugt:
+
+```
+python3 tools/fileout_to_filetree.py
+```
+
+Das Skript schreibt das FileTree-Repository mit den Paketen `Cbor-Core`, `Cbor-Tests` und `BaselineOfCbor` komplett neu. Nach jeder Änderung am Fileout muss es laufen. Die GitHub Action prüft das.
+
+Die Versions-ID in `monticello.meta/version` wird aus dem Paketinhalt abgeleitet. Ohne diese Metadaten erzeugt der FileTree-Reader bei jedem Lesen eine neue zufällige ID. Metacello findet eine abgerufene Version dann im Cache nicht wieder, und das Laden scheitert mit `MetacelloPackageSpecResolutionError`.
+
+Die Bibliothek braucht nur Kernel-Klassen und keine Zusatzpakete wie Grease, Seaside oder Rowan. Getestet:
+
+| Version | Topaz-Fileout (frischer Kernel-Stone) | Metacello (frischer GLASS-Stone) |
+|---|---|---|
+| 3.7.5 | 60/60 (auch im Entwicklungs-Image) | 60/60 |
+| 3.7.6 | 60/60 | 60/60 |
+| 4.0.0.a5 | 60/60 | – (Produkt enthält keinen GLASS-Extent) |
 
 ### Test in einem frischen Stone
 
-`tools/fresh-stone-test.sh` legt einen neuen Stone aus dem leeren `extent0.dbf` des Produkts an. Das Skript lädt beide Fileouts, lässt alle Testsuiten laufen und stoppt und löscht den Stone danach wieder. Der Stone läuft isoliert: eigener Name `cborfresh` und eigenes `GEMSTONE_GLOBAL_DIR`, andere Stones bleiben also unberührt.
+`tools/fresh-stone-test.sh` legt einen neuen Stone aus dem leeren `extent0.dbf` des Produkts an. Das Skript lädt beide Fileouts, lässt alle Testsuiten laufen und stoppt und löscht den Stone danach wieder. Mit `LOADER=metacello` nimmt es stattdessen `extent0.seaside.dbf` und lädt `BaselineOfCbor` per Metacello aus `repository/`. Der Stone läuft isoliert: eigener Name `cborfresh` und eigenes `GEMSTONE_GLOBAL_DIR`, andere Stones bleiben also unberührt.
 
 ```
 tools/fresh-stone-test.sh <GemStone-Produktverzeichnis> [Keyfile] [Arbeitsverzeichnis]

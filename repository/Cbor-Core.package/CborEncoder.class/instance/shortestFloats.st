@@ -1,0 +1,3 @@
+options
+shortestFloats
+	^shortestFloats

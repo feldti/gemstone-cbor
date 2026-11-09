@@ -1,0 +1,1 @@
+Test fixture: customer, tag 40002 in spec/types.cddl.

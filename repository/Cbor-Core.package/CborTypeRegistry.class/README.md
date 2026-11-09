@@ -1,0 +1,1 @@
+Central mapping of classes to CBOR tags (or tag 27 type names); answers configured encoders and decoders.

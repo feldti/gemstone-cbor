@@ -1,0 +1,1 @@
+A CBOR simple value (major type 7) other than false, true and null.

@@ -1,0 +1,17 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"stream",
+		"canonical",
+		"shortestFloats",
+		"depth",
+		"maxDepth"
+	],
+	"name": "CborEncoder",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}

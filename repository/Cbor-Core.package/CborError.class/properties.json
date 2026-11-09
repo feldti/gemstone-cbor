@@ -1,0 +1,11 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [],
+	"name": "CborError",
+	"pools": [],
+	"super": "Error",
+	"type": "normal"
+}

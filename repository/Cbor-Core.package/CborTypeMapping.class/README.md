@@ -1,0 +1,1 @@
+One mapping between a class and a CBOR tag number or type name.

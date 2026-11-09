@@ -1,0 +1,19 @@
+{
+	"category": "Cbor-Core",
+	"classinstvars": [],
+	"classvars": [],
+	"commentStamp": "",
+	"instvars": [
+		"stream",
+		"tagDecoders",
+		"mapClass",
+		"unicodeStrings",
+		"rejectDuplicateKeys",
+		"depth",
+		"maxDepth"
+	],
+	"name": "CborDecoder",
+	"pools": [],
+	"super": "Object",
+	"type": "normal"
+}
